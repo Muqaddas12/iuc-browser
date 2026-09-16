@@ -6,6 +6,7 @@ import {
   BackHandler,
   StatusBar,
   SafeAreaView,
+  Linking,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { HeaderSearchBar } from '../components/HeaderSearchBar';
@@ -422,12 +423,146 @@ export const BrowserScreen: React.FC = () => {
     setToast({ message: 'Picture-in-Picture mode active', type: 'info' });
   };
 
+  // Prompt Download Dialog for any generic file link (.apk, .zip, .pdf, .mp4, etc.)
+  const promptFileDownload = (url: string, suggestedName?: string, mimeType?: string) => {
+    const fileName = DownloadService.extractFileName(url, suggestedName);
+    const category = DownloadService.detectCategory(fileName, mimeType);
+
+    setDialog({
+      title: 'Download File',
+      message: `File: ${fileName}\nCategory: ${category.toUpperCase()}`,
+      icon: category === 'video' ? 'video' : category === 'apk' ? 'download' : 'file',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: () => setDialog(null) },
+        {
+          text: 'Download',
+          style: 'default',
+          onPress: async () => {
+            setDialog(null);
+            await DownloadService.startDownload(url, fileName, mimeType);
+            setToast({
+              message: `Downloading: "${fileName.substring(0, 22)}..."`,
+              type: 'download',
+            });
+          },
+        },
+      ],
+    });
+  };
+
+  // External App Schemes & Android Intent Dispatcher
+  const handleExternalAppScheme = async (url: string) => {
+    try {
+      if (url.startsWith('intent://')) {
+        const fallbackMatch = url.match(/browser_fallback_url=([^;]+)/);
+        const packageMatch = url.match(/package=([^;]+)/);
+        const schemeMatch = url.match(/scheme=([^;]+)/);
+
+        if (fallbackMatch) {
+          const fallbackUrl = decodeURIComponent(fallbackMatch[1]);
+          updateTab(activeTabId, { url: fallbackUrl, title: fallbackUrl });
+          return;
+        }
+
+        if (packageMatch) {
+          const pkg = packageMatch[1];
+          const marketUrl = `market://details?id=${pkg}`;
+          const playStoreUrl = `https://play.google.com/store/apps/details?id=${pkg}`;
+          const canMarket = await Linking.canOpenURL(marketUrl).catch(() => false);
+          if (canMarket) {
+            await Linking.openURL(marketUrl);
+          } else {
+            await Linking.openURL(playStoreUrl).catch(() => {});
+          }
+          return;
+        }
+
+        if (schemeMatch) {
+          const customScheme = schemeMatch[1] + '://' + url.replace(/^intent:\/\//, '').split('#')[0];
+          const canCustom = await Linking.canOpenURL(customScheme).catch(() => false);
+          if (canCustom) {
+            await Linking.openURL(customScheme);
+            return;
+          }
+        }
+      }
+
+      if (url.startsWith('market://')) {
+        const pkgMatch = url.match(/id=([^&]+)/);
+        const canOpen = await Linking.canOpenURL(url).catch(() => false);
+        if (canOpen) {
+          await Linking.openURL(url);
+        } else if (pkgMatch) {
+          await Linking.openURL(`https://play.google.com/store/apps/details?id=${pkgMatch[1]}`).catch(() => {});
+        }
+        return;
+      }
+
+      const canOpen = await Linking.canOpenURL(url).catch(() => false);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        console.warn('Could not launch external URL scheme:', url);
+      }
+    } catch (err) {
+      console.warn('Failed to dispatch external URL scheme:', err);
+    }
+  };
+
+  // Intercept downloads and external app schemes
+  const handleShouldStartLoadWithRequest = (request: any) => {
+    const { url } = request;
+    if (!url) return false;
+
+    // 1. External App Schemes (market://, intent://, whatsapp://, tg://, tel:, mailto:, sms:, play.google.com)
+    if (
+      url.startsWith('market://') ||
+      url.startsWith('intent://') ||
+      url.startsWith('whatsapp://') ||
+      url.startsWith('tg://') ||
+      url.startsWith('tel:') ||
+      url.startsWith('mailto:') ||
+      url.startsWith('sms:') ||
+      url.startsWith('fb:')
+    ) {
+      handleExternalAppScheme(url);
+      return false;
+    }
+
+    if (url.includes('play.google.com/store/apps/details')) {
+      handleExternalAppScheme(url);
+      return false;
+    }
+
+    // 2. Direct downloadable file links (.apk, .zip, .pdf, .mp4, etc.)
+    const lowerClean = url.toLowerCase().split('?')[0].split('#')[0];
+    const downloadableExts = [
+      '.apk', '.zip', '.rar', '.7z', '.tar', '.gz', '.pdf',
+      '.mp4', '.mp3', '.mkv', '.avi', '.mov', '.webm', '.m4v',
+      '.iso', '.exe', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'
+    ];
+    const isDownloadFile = downloadableExts.some((ext) => lowerClean.endsWith(ext));
+    if (
+      isDownloadFile &&
+      !url.includes('google.com/search') &&
+      !url.includes('bing.com') &&
+      !url.includes('duckduckgo.com')
+    ) {
+      promptFileDownload(url);
+      return false;
+    }
+
+    return true;
+  };
+
   // WebView message dispatcher
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'MEDIA_DETECTED' && data.payload) {
         setDetectedVideo(data.payload);
+      } else if (data.type === 'DOWNLOAD_REQUEST' && data.payload) {
+        promptFileDownload(data.payload.url, data.payload.fileName, data.payload.mimeType);
       }
     } catch {}
   };
@@ -528,6 +663,7 @@ export const BrowserScreen: React.FC = () => {
             androidLayerType="hardware"
             originWhitelist={['*']}
             setSupportMultipleWindows={false}
+            onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
             onNavigationStateChange={(navState) => {
               updateTab(activeTabId, {
                 canGoBack: navState.canGoBack,
@@ -550,16 +686,32 @@ export const BrowserScreen: React.FC = () => {
                 });
               }
             }}
+            onLoadEnd={(syntheticEvent) => {
+              const { nativeEvent } = syntheticEvent;
+              if (
+                !activeTab?.isIncognito &&
+                settings.saveHistory &&
+                nativeEvent.url &&
+                !nativeEvent.url.startsWith('about:') &&
+                !nativeEvent.url.startsWith('uc://')
+              ) {
+                StorageService.addHistory({
+                  title: nativeEvent.title || nativeEvent.url,
+                  url: nativeEvent.url,
+                });
+              }
+            }}
             onLoadProgress={({ nativeEvent }) => {
               updateTab(activeTabId, { progress: nativeEvent.progress });
             }}
             onMessage={handleWebViewMessage}
             onError={(syntheticEvent) => {
               const { nativeEvent } = syntheticEvent;
-              // Ignore benign / non-fatal chunk disconnects on dynamic media sites
+              // Ignore benign / non-fatal chunk disconnects or unknown app schemes
               if (
                 nativeEvent.description &&
                 (nativeEvent.description.includes('ERR_INCOMPLETE_CHUNKED_ENCODING') ||
+                 nativeEvent.description.includes('ERR_UNKNOWN_URL_SCHEME') ||
                  nativeEvent.description.includes('ERR_ABORTED') ||
                  nativeEvent.description.includes('ERR_BLOCKED_BY_CLIENT'))
               ) {

@@ -1,4 +1,4 @@
-// Enhanced HTML5, Streaming, HLS (.m3u8), OK.ru, YouTube, and Progressive Video Sniffer
+// Enhanced HTML5, Streaming, HLS (.m3u8), OK.ru, YouTube, and File Download Sniffer
 
 export const MEDIA_SNIFFER_JS = `
 (function() {
@@ -8,6 +8,32 @@ export const MEDIA_SNIFFER_JS = `
   var detectedMap = {};
   var isYouTube = /youtube\\.com|youtu\\.be/i.test(window.location.hostname);
   var isOkRu = /ok\\.ru/i.test(window.location.hostname);
+
+  var downloadExtensions = [
+    '.apk', '.zip', '.rar', '.7z', '.tar', '.gz', '.pdf',
+    '.mp4', '.mp3', '.mkv', '.avi', '.mov', '.webm', '.m4v',
+    '.iso', '.exe', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.dmg', '.flac', '.wav', '.ogg', '.opus', '.m3u8'
+  ];
+
+  function isDownloadableFile(url) {
+    if (!url || typeof url !== 'string') return false;
+    var clean = url.split('?')[0].split('#')[0].toLowerCase();
+    for (var i = 0; i < downloadExtensions.length; i++) {
+      if (clean.endsWith(downloadExtensions[i])) return true;
+    }
+    return false;
+  }
+
+  function getFileNameFromUrl(url) {
+    try {
+      var clean = url.split('?')[0].split('#')[0];
+      var parts = clean.split('/');
+      var last = parts[parts.length - 1];
+      if (last && last.includes('.')) return decodeURIComponent(last);
+    } catch(e) {}
+    return 'download_' + Date.now();
+  }
 
   function isVideoUrl(url) {
     if (!url || typeof url !== 'string') return false;
@@ -290,6 +316,34 @@ export const MEDIA_SNIFFER_JS = `
       }
     } catch (e) {}
   }
+
+  // 8. Intercept Direct Download Link Clicks
+  document.addEventListener('click', function(e) {
+    try {
+      var target = e.target;
+      while (target && target.tagName !== 'A' && target !== document.body) {
+        target = target.parentNode;
+      }
+      if (target && target.tagName === 'A') {
+        var href = target.getAttribute('href');
+        var downloadAttr = target.getAttribute('download');
+        if (href && (downloadAttr !== null || isDownloadableFile(href))) {
+          var fileName = downloadAttr || getFileNameFromUrl(href);
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'DOWNLOAD_REQUEST',
+              payload: {
+                url: target.href || href,
+                fileName: fileName
+              }
+            }));
+          }
+        }
+      }
+    } catch(err) {}
+  }, true);
 
   // Run immediately and periodically
   checkYouTube();

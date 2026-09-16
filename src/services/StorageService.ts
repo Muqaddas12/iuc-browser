@@ -101,18 +101,23 @@ export const StorageService = {
   },
 
   async addHistory(item: { title: string; url: string }): Promise<void> {
-    if (!item.url || item.url.startsWith('about:') || item.url.startsWith('uc://')) return;
+    if (!item.url || item.url.startsWith('about:') || item.url.startsWith('uc://') || item.url.startsWith('javascript:')) return;
     try {
       const list = await this.getHistory();
+      const existing = list.find(h => h.url === item.url);
+      const cleanTitle = (item.title && item.title.trim() && item.title !== item.url)
+        ? item.title.trim()
+        : (existing?.title || item.url);
+
       const newItem: HistoryItem = {
-        id: 'hist_' + Date.now(),
-        title: item.title || item.url,
+        id: existing?.id || ('hist_' + Date.now()),
+        title: cleanTitle,
         url: item.url,
         timestamp: Date.now(),
       };
-      // Keep up to 200 items, avoid consecutive duplicates
+
       const filtered = list.filter(h => h.url !== item.url);
-      const updated = [newItem, ...filtered].slice(0, 200);
+      const updated = [newItem, ...filtered].slice(0, 500);
       await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
     } catch (e) {
       console.error('Failed to add history', e);

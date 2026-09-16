@@ -76,6 +76,16 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
     }
 
     @ReactMethod
+    fun addListener(eventName: String?) {
+        // Required for React Native NativeEventEmitter
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // Required for React Native NativeEventEmitter
+    }
+
+    @ReactMethod
     fun startDownload(
         id: String,
         url: String,

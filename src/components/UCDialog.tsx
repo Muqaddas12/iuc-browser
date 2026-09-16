@@ -20,7 +20,7 @@ export interface DialogButton {
 export interface DialogConfig {
   title: string;
   message?: string;
-  icon?: 'download' | 'trash' | 'info' | 'shield' | 'moon' | 'video';
+  icon?: 'download' | 'trash' | 'info' | 'shield' | 'moon' | 'video' | 'file';
   buttons: DialogButton[];
   options?: { label: string; subLabel?: string; onSelect: () => void }[];
 }
@@ -39,6 +39,8 @@ export const UCDialog: React.FC<UCDialogProps> = ({ dialog, isDark, onClose }) =
     switch (dialog.icon) {
       case 'download':
         return <Feather name="download" size={size} color={COLORS.primary} />;
+      case 'file':
+        return <Feather name="file-text" size={size} color={COLORS.primary} />;
       case 'trash':
         return <Ionicons name="trash-outline" size={size} color={COLORS.danger} />;
       case 'shield':
