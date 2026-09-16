@@ -1,4 +1,5 @@
 import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +15,8 @@ import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { BrowserSettings, SearchEngine } from '../types/browser';
 import { COLORS, SEARCH_ENGINES } from '../constants/theme';
 import { StorageService } from '../services/StorageService';
+import { UCDialog, DialogConfig } from '../components/UCDialog';
+import { UCToast, ToastConfig } from '../components/UCToast';
 
 interface SettingsScreenProps {
   visible: boolean;
@@ -30,6 +33,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onUpdateSettings,
   onClose,
 }) => {
+  const [dialog, setDialog] = useState<DialogConfig | null>(null);
+  const [toast, setToast] = useState<ToastConfig | null>(null);
+
   const isDark = isIncognito || settings.nightModeEnabled;
 
   const handleClearBrowsingData = () => {
@@ -38,16 +44,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       'This will clear history, cached pages, and browsing cookies.',
       [
         { text: 'Cancel', style: 'cancel' },
+    setDialog({
+      title: 'Clear Browsing Data',
+      message: 'This will clear all browsing history, cache, and website data.',
+      icon: 'trash',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: () => setDialog(null) },
         {
           text: 'Clear Data',
           style: 'destructive',
           onPress: async () => {
             await StorageService.clearHistory();
             Alert.alert('Success', 'Browsing history & cache cleared.');
+            setToast({ message: 'Browsing history and cache cleared.', type: 'success' });
           },
         },
       ]
     );
+      ],
+    });
   };
 
   return (
@@ -89,6 +104,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Switch
                 value={settings.adBlockEnabled}
                 onValueChange={(val) => onUpdateSettings({ adBlockEnabled: val })}
+                onValueChange={(val) => {
+                  onUpdateSettings({ adBlockEnabled: val });
+                  setToast({
+                    message: val ? 'AdBlocker enabled' : 'AdBlocker disabled',
+                    type: 'shield',
+                  });
+                }}
                 trackColor={{ false: '#767577', true: COLORS.primary }}
               />
             </View>
@@ -104,6 +126,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Switch
                 value={settings.speedMode}
                 onValueChange={(val) => onUpdateSettings({ speedMode: val })}
+                onValueChange={(val) => {
+                  onUpdateSettings({ speedMode: val });
+                  setToast({
+                    message: val ? 'Speed Mode activated' : 'Speed Mode deactivated',
+                    type: 'info',
+                  });
+                }}
                 trackColor={{ false: '#767577', true: COLORS.primary }}
               />
             </View>
@@ -148,9 +177,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <Text style={[styles.settingLabel, isDark && { color: '#FFF' }]}>Version</Text>
               </View>
               <Text style={styles.settingValue}>1.0.0 (UC Build)</Text>
+              <Text style={styles.settingValue}>1.0.0 (UC Native Build)</Text>
             </View>
           </View>
         </ScrollView>
+
+        <UCDialog dialog={dialog} isDark={isDark} onClose={() => setDialog(null)} />
+        <UCToast toast={toast} onDismiss={() => setToast(null)} />
       </View>
     </Modal>
   );

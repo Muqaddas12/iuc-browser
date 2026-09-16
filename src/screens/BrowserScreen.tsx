@@ -20,6 +20,8 @@ import { VideoAssistantBar } from '../components/VideoAssistantBar';
 import { DownloadManagerScreen } from './DownloadManagerScreen';
 import { BookmarksHistoryScreen } from './BookmarksHistoryScreen';
 import { SettingsScreen } from './SettingsScreen';
+import { UCDialog, DialogConfig } from '../components/UCDialog';
+import { UCToast, ToastConfig } from '../components/UCToast';
 import { Tab, ShortcutItem, BrowserSettings, DetectedVideo, SearchEngine } from '../types/browser';
 import { COLORS, SEARCH_ENGINES, UC_USER_AGENTS } from '../constants/theme';
 import { StorageService } from '../services/StorageService';
@@ -65,6 +67,10 @@ export const BrowserScreen: React.FC = () => {
   const [isBookmarksHistoryOpen, setIsBookmarksHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // Custom Dialog & Toast System
+  const [dialog, setDialog] = useState<DialogConfig | null>(null);
+  const [toast, setToast] = useState<ToastConfig | null>(null);
+
   // Video Sniffer State
   const [detectedVideo, setDetectedVideo] = useState<DetectedVideo | null>(null);
 
@@ -90,6 +96,10 @@ export const BrowserScreen: React.FC = () => {
   // Hardware Back Button Handler (Android)
   useEffect(() => {
     const onBackPress = () => {
+      if (dialog) {
+        setDialog(null);
+        return true;
+      }
       if (isMenuOpen) {
         setIsMenuOpen(false);
         return true;
@@ -129,6 +139,7 @@ export const BrowserScreen: React.FC = () => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => subscription.remove();
   }, [
+    dialog,
     isMenuOpen,
     isTabSwitcherOpen,
     isDownloadsOpen,
@@ -163,6 +174,10 @@ export const BrowserScreen: React.FC = () => {
     setActiveTabId(newId);
     setIsIncognitoView(incognito);
     setDetectedVideo(null);
+    setToast({
+      message: incognito ? 'Opened new Incognito Tab' : 'Opened new Tab',
+      type: 'info',
+    });
   };
 
   const handleCloseTab = (tabId: string) => {
@@ -210,6 +225,7 @@ export const BrowserScreen: React.FC = () => {
     ]);
     setActiveTabId(fallbackId);
     setIsTabSwitcherOpen(false);
+    setToast({ message: 'Closed all tabs', type: 'info' });
   };
 
   // Navigation Handlers
@@ -269,12 +285,14 @@ export const BrowserScreen: React.FC = () => {
     const updated = [...shortcuts, newItem];
     setShortcuts(updated);
     await StorageService.saveShortcuts(updated);
+    setToast({ message: `Added "${title}" to Speed Dial`, type: 'success' });
   };
 
   const handleDeleteShortcut = async (id: string) => {
     const updated = shortcuts.filter((s) => s.id !== id);
     setShortcuts(updated);
     await StorageService.saveShortcuts(updated);
+    setToast({ message: 'Shortcut removed', type: 'info' });
   };
 
   // Settings & Toggles
@@ -291,20 +309,38 @@ export const BrowserScreen: React.FC = () => {
     if (ref) {
       ref.injectJavaScript(getNightModeScript(newVal));
     }
+    setToast({
+      message: newVal ? 'Night Mode enabled' : 'Night Mode disabled',
+      type: 'info',
+    });
   };
 
   const handleToggleAdBlock = () => {
     handleUpdateSettings({ adBlockEnabled: !settings.adBlockEnabled });
+    const newVal = !settings.adBlockEnabled;
+    handleUpdateSettings({ adBlockEnabled: newVal });
+    setToast({
+      message: newVal ? 'AdBlocker ON' : 'AdBlocker OFF',
+      type: 'info',
+    });
   };
 
   const handleToggleDesktopSite = () => {
     handleUpdateSettings({ desktopSite: !settings.desktopSite });
     setTimeout(() => handleReload(), 100);
+    const newVal = !settings.desktopSite;
+    handleUpdateSettings({ desktopSite: newVal });
+    setToast({
+      message: newVal ? 'Desktop Site ON' : 'Mobile Site ON',
+      type: 'info',
+    });
+    setTimeout(() => handleReload(), 150);
   };
 
   const handleAddBookmark = async () => {
     if (isHomePage) {
       Alert.alert('Bookmark', 'Cannot bookmark the home speed dial page.');
+      setToast({ message: 'Cannot bookmark Home page', type: 'warning' });
       return;
     }
     await StorageService.addBookmark({
@@ -312,6 +348,7 @@ export const BrowserScreen: React.FC = () => {
       url: activeTab.url,
     });
     Alert.alert('Bookmarked', `"${activeTab.title || activeTab.url}" has been added to bookmarks.`);
+    setToast({ message: 'Saved to Bookmarks', type: 'success' });
   };
 
   // Video Assistant
@@ -319,13 +356,69 @@ export const BrowserScreen: React.FC = () => {
     setDetectedVideo(null);
     await DownloadService.startDownload(video.src, (video.title || 'video') + '.mp4', 'video/mp4');
     Alert.alert('Download Started', `Downloading "${video.title || 'video'}" in background.`);
+  // Video Assistant & Dialog
+  const handleOpenVideoAssistant = (video: DetectedVideo) => {
+    const title = video.title || 'Web Video';
+    const isHls = video.src.includes('.m3u8');
+
+    setDialog({
+      title: 'Download Video',
+      message: `${title}\nFormat: ${isHls ? 'HLS Stream (Converting to MP4)' : 'MP4 HD Video'}`,
+      icon: 'video',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: () => setDialog(null) },
+        {
+          text: 'Download',
+          style: 'default',
+          onPress: async () => {
+            setDetectedVideo(null);
+            const safeName = (title.replace(/[^a-zA-Z0-9_-]/g, '_')) + '.mp4';
+            await DownloadService.startDownload(video.src, safeName, 'video/mp4');
+            setToast({
+              message: `Download started: "${title.substring(0, 25)}..."`,
+              type: 'download',
+            });
+          },
+        },
+      ],
+      options: [
+        {
+          label: '720p HD (MP4)',
+          subLabel: isHls ? 'HLS High' : 'Direct Stream',
+          onSelect: async () => {
+            setDetectedVideo(null);
+            const safeName = (title.replace(/[^a-zA-Z0-9_-]/g, '_')) + '_720p.mp4';
+            await DownloadService.startDownload(video.src, safeName, 'video/mp4');
+            setToast({
+              message: `Downloading 720p HD: "${title.substring(0, 20)}..."`,
+              type: 'download',
+            });
+          },
+        },
+        {
+          label: '480p Standard (MP4)',
+          subLabel: 'Fast Download',
+          onSelect: async () => {
+            setDetectedVideo(null);
+            const safeName = (title.replace(/[^a-zA-Z0-9_-]/g, '_')) + '_480p.mp4';
+            await DownloadService.startDownload(video.src, safeName, 'video/mp4');
+            setToast({
+              message: `Downloading 480p: "${title.substring(0, 20)}..."`,
+              type: 'download',
+            });
+          },
+        },
+      ],
+    });
   };
 
   const handleFloatingPlay = (video: DetectedVideo) => {
     Alert.alert('PiP Floating Mode', 'Floating Video player activated.');
+    setToast({ message: 'Picture-in-Picture mode active', type: 'info' });
   };
 
   // WebView message dispatcher (Media Sniffer & Native Hooks)
+  // WebView message dispatcher
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -373,6 +466,7 @@ export const BrowserScreen: React.FC = () => {
         <VideoAssistantBar
           video={detectedVideo}
           onDownload={handleDownloadDetectedVideo}
+          onDownload={handleOpenVideoAssistant}
           onFloatingPlay={handleFloatingPlay}
           onDismiss={() => setDetectedVideo(null)}
         />
@@ -489,10 +583,30 @@ export const BrowserScreen: React.FC = () => {
           const nextIncognito = !activeTab.isIncognito;
           updateTab(activeTabId, { isIncognito: nextIncognito });
           setIsIncognitoView(nextIncognito);
+          setToast({
+            message: nextIncognito ? 'Incognito Mode enabled' : 'Switched to Normal Tab',
+            type: 'info',
+          });
         }}
         onToggleDesktopSite={handleToggleDesktopSite}
         onToggleNoImage={() => handleUpdateSettings({ noImageMode: !settings.noImageMode })}
         onToggleSpeedMode={() => handleUpdateSettings({ speedMode: !settings.speedMode })}
+        onToggleNoImage={() => {
+          const newVal = !settings.noImageMode;
+          handleUpdateSettings({ noImageMode: newVal });
+          setToast({
+            message: newVal ? 'No Image Mode ON' : 'No Image Mode OFF',
+            type: 'info',
+          });
+        }}
+        onToggleSpeedMode={() => {
+          const newVal = !settings.speedMode;
+          handleUpdateSettings({ speedMode: newVal });
+          setToast({
+            message: newVal ? 'Speed Mode ON' : 'Speed Mode OFF',
+            type: 'info',
+          });
+        }}
         onToggleFullScreen={() => {}}
         onRefreshPage={handleReload}
         onAddBookmark={handleAddBookmark}
@@ -543,6 +657,10 @@ export const BrowserScreen: React.FC = () => {
         onUpdateSettings={handleUpdateSettings}
         onClose={() => setIsSettingsOpen(false)}
       />
+
+      {/* 10. Professional Custom UC Dialog & Toast */}
+      <UCDialog dialog={dialog} isDark={isDark} onClose={() => setDialog(null)} />
+      <UCToast toast={toast} onDismiss={() => setToast(null)} />
     </SafeAreaView>
   );
 };

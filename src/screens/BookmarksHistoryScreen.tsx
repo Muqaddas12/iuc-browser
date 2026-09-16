@@ -14,6 +14,8 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { Bookmark, HistoryItem } from '../types/browser';
 import { COLORS } from '../constants/theme';
 import { StorageService } from '../services/StorageService';
+import { UCDialog, DialogConfig } from '../components/UCDialog';
+import { UCToast, ToastConfig } from '../components/UCToast';
 
 interface BookmarksHistoryScreenProps {
   visible: boolean;
@@ -32,6 +34,8 @@ export const BookmarksHistoryScreen: React.FC<BookmarksHistoryScreenProps> = ({
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [dialog, setDialog] = useState<DialogConfig | null>(null);
+  const [toast, setToast] = useState<ToastConfig | null>(null);
 
   const loadData = async () => {
     const bms = await StorageService.getBookmarks();
@@ -64,11 +68,13 @@ export const BookmarksHistoryScreen: React.FC<BookmarksHistoryScreenProps> = ({
   const handleDeleteBookmark = async (id: string) => {
     await StorageService.removeBookmark(id);
     loadData();
+    setToast({ message: 'Bookmark removed', type: 'info' });
   };
 
   const handleDeleteHistory = async (id: string) => {
     await StorageService.removeHistoryItem(id);
     loadData();
+    setToast({ message: 'History item removed', type: 'info' });
   };
 
   const handleClearHistory = async () => {
@@ -80,9 +86,26 @@ export const BookmarksHistoryScreen: React.FC<BookmarksHistoryScreenProps> = ({
         onPress: async () => {
           await StorageService.clearHistory();
           loadData();
+  const handleClearHistory = () => {
+    setDialog({
+      title: 'Clear History',
+      message: 'Are you sure you want to clear all browsing history?',
+      icon: 'trash',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: () => setDialog(null) },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            await StorageService.clearHistory();
+            loadData();
+            setToast({ message: 'Browsing history cleared', type: 'success' });
+          },
         },
       },
     ]);
+      ],
+    });
   };
 
   return (
@@ -237,6 +260,9 @@ export const BookmarksHistoryScreen: React.FC<BookmarksHistoryScreenProps> = ({
             }
           />
         )}
+
+        <UCDialog dialog={dialog} isDark={isDark} onClose={() => setDialog(null)} />
+        <UCToast toast={toast} onDismiss={() => setToast(null)} />
       </View>
     </Modal>
   );

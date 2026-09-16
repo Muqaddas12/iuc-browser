@@ -46,8 +46,9 @@
           "savePhotosPermission": "Allow UC Browser to save downloaded media.",
           "isAccessMediaLocationEnabled": true
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-font"
     ]
   }
 }
-

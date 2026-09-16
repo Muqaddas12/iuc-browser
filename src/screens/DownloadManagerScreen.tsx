@@ -14,6 +14,8 @@ import { DownloadItem } from '../types/browser';
 import { COLORS } from '../constants/theme';
 import { DownloadService } from '../services/NativeDownloadService';
 import { StorageService } from '../services/StorageService';
+import { UCDialog, DialogConfig } from '../components/UCDialog';
+import { UCToast, ToastConfig } from '../components/UCToast';
 
 interface DownloadManagerScreenProps {
   visible: boolean;
@@ -29,6 +31,8 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
   const [activeTab, setActiveTab] = useState<'downloading' | 'completed'>('downloading');
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<DownloadItem['category']>('all');
+  const [dialog, setDialog] = useState<DialogConfig | null>(null);
+  const [toast, setToast] = useState<ToastConfig | null>(null);
 
   const loadDownloads = async () => {
     const list = await StorageService.getDownloads();
@@ -91,6 +95,40 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
     const updated = downloads.filter((d) => d.id !== id);
     setDownloads(updated);
     await StorageService.saveDownloads(updated);
+  const confirmDelete = (item: DownloadItem) => {
+    setDialog({
+      title: 'Delete Download',
+      message: `Are you sure you want to delete "${item.fileName}"?`,
+      icon: 'trash',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: () => setDialog(null) },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await DownloadService.deleteDownload(item);
+            setDownloads((prev) => prev.filter((d) => d.id !== item.id));
+            setToast({ message: 'File deleted successfully.', type: 'info' });
+          },
+        },
+      ],
+    });
+  };
+
+  const handlePause = async (id: string) => {
+    await DownloadService.pause(id);
+    setDownloads((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, status: 'paused' } : d))
+    );
+    setToast({ message: 'Download paused.', type: 'info' });
+  };
+
+  const handleResume = async (id: string) => {
+    await DownloadService.resume(id);
+    setDownloads((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, status: 'downloading' } : d))
+    );
+    setToast({ message: 'Resuming download...', type: 'download' });
   };
 
   const categories: { key: DownloadItem['category']; label: string }[] = [
@@ -198,8 +236,12 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                     <Text style={styles.metaText}>
                       {formatBytes(item.downloadedBytes)} / {formatBytes(item.totalBytes)} •{' '}
                       {formatSpeed(item.speedBps)}
+                      {item.status === 'paused' ? 'Paused' : formatSpeed(item.speedBps)}
                     </Text>
                   </View>
+                  <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item)}>
+                    <Ionicons name="trash-outline" size={18} color="#888" />
+                  </TouchableOpacity>
                 </View>
 
                 {/* Progress Bar */}
@@ -208,6 +250,7 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                 </View>
 
                 {/* Controls: Pause/Resume, Cancel */}
+                {/* Controls: Pause/Resume */}
                 <View style={styles.controlRow}>
                   <Text style={styles.progressPercent}>{item.progress}%</Text>
                   <View style={styles.actionsGroup}>
@@ -215,6 +258,7 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                       <TouchableOpacity
                         style={styles.actionIconButton}
                         onPress={() => DownloadService.pause(item.id)}
+                        onPress={() => handlePause(item.id)}
                       >
                         <Ionicons name="pause" size={18} color={COLORS.primary} />
                       </TouchableOpacity>
@@ -222,6 +266,7 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                       <TouchableOpacity
                         style={styles.actionIconButton}
                         onPress={() => DownloadService.resume(item.id)}
+                        onPress={() => handleResume(item.id)}
                       >
                         <Ionicons name="play" size={18} color={COLORS.primary} />
                       </TouchableOpacity>
@@ -266,6 +311,7 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                     </Text>
                   </View>
                   <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id)}>
+                  <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item)}>
                     <Ionicons name="trash-outline" size={18} color="#888" />
                   </TouchableOpacity>
                 </View>
@@ -279,6 +325,10 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
             }
           />
         )}
+
+        {/* Custom Dialog & Toast */}
+        <UCDialog dialog={dialog} isDark={isDark} onClose={() => setDialog(null)} />
+        <UCToast toast={toast} onDismiss={() => setToast(null)} />
       </View>
     </Modal>
   );
