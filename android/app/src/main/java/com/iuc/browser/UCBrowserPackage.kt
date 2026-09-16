@@ -19,11 +19,9 @@ class UCBrowserPackage : ReactPackage {
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<View, ReactShadowNode<*>>> {
-        return emptyList()
         @Suppress("UNCHECKED_CAST")
         return listOf(
             UCWebEngineManager() as ViewManager<View, ReactShadowNode<*>>
         )
     }
 }
-
