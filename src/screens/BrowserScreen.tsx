@@ -450,39 +450,67 @@ export const BrowserScreen: React.FC = () => {
     });
   };
 
+  // Extract clean in-browser Google Play Store web URL from intent/market/web links
+  const extractPlayStoreWebUrl = (rawUrl: string): string | null => {
+    if (!rawUrl) return null;
+
+    // 1. Direct Web Play Store URL
+    if (rawUrl.startsWith('http://play.google.com') || rawUrl.startsWith('https://play.google.com')) {
+      return rawUrl;
+    }
+
+    // 2. intent://play.google.com/...
+    if (rawUrl.startsWith('intent://play.google.com')) {
+      return rawUrl.replace(/^intent:\/\//, 'https://').split('#Intent;')[0].split('#intent;')[0];
+    }
+
+    // 3. Fallback URL inside intent
+    const fallbackMatch = rawUrl.match(/browser_fallback_url=([^;]+)/);
+    if (fallbackMatch) {
+      const decoded = decodeURIComponent(fallbackMatch[1]);
+      if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+        return decoded;
+      }
+    }
+
+    // 4. Data parameter inside intent
+    const dataMatch = rawUrl.match(/data=([^;]+)/);
+    if (dataMatch) {
+      const decoded = decodeURIComponent(dataMatch[1]);
+      if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+        return decoded;
+      }
+    }
+
+    // 5. App package ID inside URL (e.g. details?id=com.google.android.youtube or market://details?id=...)
+    const idMatch = rawUrl.match(/[?&]id=([^&;#]+)/) || rawUrl.match(/\/details\?id=([^&;#]+)/) || rawUrl.match(/details\?id=([^&;#]+)/);
+    if (idMatch && idMatch[1] && idMatch[1] !== 'com.android.vending') {
+      return `https://play.google.com/store/apps/details?id=${idMatch[1]}`;
+    }
+
+    // 6. Package name if not vending
+    const packageMatch = rawUrl.match(/package=([^;]+)/);
+    if (packageMatch && packageMatch[1] && packageMatch[1] !== 'com.android.vending') {
+      return `https://play.google.com/store/apps/details?id=${packageMatch[1]}`;
+    }
+
+    return null;
+  };
+
   // In-Browser Scheme Translator: Keeps all navigation inside the browser
   const handleExternalAppScheme = (url: string) => {
     try {
+      const playStoreUrl = extractPlayStoreWebUrl(url);
+      if (playStoreUrl) {
+        updateTab(activeTabId, { url: playStoreUrl, title: 'Google Play Store' });
+        return;
+      }
+
       if (url.startsWith('intent://')) {
-        const fallbackMatch = url.match(/browser_fallback_url=([^;]+)/);
-        const packageMatch = url.match(/package=([^;]+)/);
         const schemeMatch = url.match(/scheme=([^;]+)/);
-
-        if (fallbackMatch) {
-          const fallbackUrl = decodeURIComponent(fallbackMatch[1]);
-          updateTab(activeTabId, { url: fallbackUrl, title: fallbackUrl });
-          return;
-        }
-
-        if (packageMatch) {
-          const pkg = packageMatch[1];
-          const inBrowserPlayStoreUrl = `https://play.google.com/store/apps/details?id=${pkg}`;
-          updateTab(activeTabId, { url: inBrowserPlayStoreUrl, title: 'Google Play Store' });
-          return;
-        }
-
         if (schemeMatch && (schemeMatch[1] === 'http' || schemeMatch[1] === 'https')) {
           const webUrl = schemeMatch[1] + '://' + url.replace(/^intent:\/\//, '').split('#')[0];
           updateTab(activeTabId, { url: webUrl, title: webUrl });
-          return;
-        }
-      }
-
-      if (url.startsWith('market://')) {
-        const pkgMatch = url.match(/id=([^&]+)/);
-        if (pkgMatch) {
-          const inBrowserPlayStoreUrl = `https://play.google.com/store/apps/details?id=${pkgMatch[1]}`;
-          updateTab(activeTabId, { url: inBrowserPlayStoreUrl, title: 'Google Play Store' });
           return;
         }
       }
@@ -501,24 +529,34 @@ export const BrowserScreen: React.FC = () => {
     const { url } = request;
     if (!url) return false;
 
-    // 1. PlayStore web pages load 100% inside the browser
-    if (url.includes('play.google.com')) {
+    // 1. Intent / Market Schemes -> Translate to In-Browser Web URL
+    if (url.startsWith('intent:') || url.startsWith('market:')) {
+      const playStoreUrl = extractPlayStoreWebUrl(url);
+      if (playStoreUrl) {
+        updateTab(activeTabId, { url: playStoreUrl, title: 'Google Play Store' });
+      } else {
+        handleExternalAppScheme(url);
+      }
+      return false;
+    }
+
+    // 2. Direct HTTP/HTTPS Play Store URL loads directly in browser
+    if (url.startsWith('https://play.google.com') || url.startsWith('http://play.google.com')) {
       return true;
     }
 
-    // 2. Custom app schemes (market://, intent://) are translated to in-browser URLs
+    // 3. Other non-web custom schemes (tel:, mailto:, sms:, etc.)
     if (
-      url.startsWith('market://') ||
-      url.startsWith('intent://') ||
       url.startsWith('tel:') ||
       url.startsWith('mailto:') ||
-      url.startsWith('sms:')
+      url.startsWith('sms:') ||
+      (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('about:') && !url.startsWith('blob:') && !url.startsWith('uc://'))
     ) {
       handleExternalAppScheme(url);
       return false;
     }
 
-    // 3. Direct downloadable file links (.apk, .zip, .pdf, .mp4, etc.)
+    // 4. Direct downloadable file links (.apk, .zip, .pdf, .mp4, etc.)
     const lowerClean = url.toLowerCase().split('?')[0].split('#')[0];
     const downloadableExts = [
       '.apk', '.zip', '.rar', '.7z', '.tar', '.gz', '.pdf',
@@ -689,6 +727,9 @@ export const BrowserScreen: React.FC = () => {
               updateTab(activeTabId, { progress: nativeEvent.progress });
             }}
             onMessage={handleWebViewMessage}
+            renderError={() => (
+              <View style={[styles.webView, { backgroundColor: isDark ? COLORS.incognitoBg : '#FFFFFF' }]} />
+            )}
             onError={(syntheticEvent) => {
               const { nativeEvent } = syntheticEvent;
               // Ignore benign / non-fatal chunk disconnects or unknown app schemes

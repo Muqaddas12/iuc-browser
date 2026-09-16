@@ -109,7 +109,7 @@ This repository contains a full-featured, high-performance **UC Browser Clone** 
 
 ### 1. Installation
 ```bash
-git clone <YOUR_REPO_URL>
+git clone https://github.com/Muqaddas12/iuc-browser
 cd "iuc browser"
 npm install
 ```
