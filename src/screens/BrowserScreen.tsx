@@ -6,8 +6,6 @@ import {
   BackHandler,
   StatusBar,
   SafeAreaView,
-  Platform,
-  Alert,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { HeaderSearchBar } from '../components/HeaderSearchBar';
@@ -304,7 +302,6 @@ export const BrowserScreen: React.FC = () => {
   const handleToggleNightMode = () => {
     const newVal = !settings.nightModeEnabled;
     handleUpdateSettings({ nightModeEnabled: newVal });
-    // Inject night mode CSS immediately into active tab
     const ref = webViewRefs.current[activeTabId];
     if (ref) {
       ref.injectJavaScript(getNightModeScript(newVal));
@@ -316,7 +313,6 @@ export const BrowserScreen: React.FC = () => {
   };
 
   const handleToggleAdBlock = () => {
-    handleUpdateSettings({ adBlockEnabled: !settings.adBlockEnabled });
     const newVal = !settings.adBlockEnabled;
     handleUpdateSettings({ adBlockEnabled: newVal });
     setToast({
@@ -326,8 +322,6 @@ export const BrowserScreen: React.FC = () => {
   };
 
   const handleToggleDesktopSite = () => {
-    handleUpdateSettings({ desktopSite: !settings.desktopSite });
-    setTimeout(() => handleReload(), 100);
     const newVal = !settings.desktopSite;
     handleUpdateSettings({ desktopSite: newVal });
     setToast({
@@ -339,7 +333,6 @@ export const BrowserScreen: React.FC = () => {
 
   const handleAddBookmark = async () => {
     if (isHomePage) {
-      Alert.alert('Bookmark', 'Cannot bookmark the home speed dial page.');
       setToast({ message: 'Cannot bookmark Home page', type: 'warning' });
       return;
     }
@@ -347,15 +340,9 @@ export const BrowserScreen: React.FC = () => {
       title: activeTab.title || activeTab.url,
       url: activeTab.url,
     });
-    Alert.alert('Bookmarked', `"${activeTab.title || activeTab.url}" has been added to bookmarks.`);
     setToast({ message: 'Saved to Bookmarks', type: 'success' });
   };
 
-  // Video Assistant
-  const handleDownloadDetectedVideo = async (video: DetectedVideo) => {
-    setDetectedVideo(null);
-    await DownloadService.startDownload(video.src, (video.title || 'video') + '.mp4', 'video/mp4');
-    Alert.alert('Download Started', `Downloading "${video.title || 'video'}" in background.`);
   // Video Assistant & Dialog
   const handleOpenVideoAssistant = (video: DetectedVideo) => {
     const title = video.title || 'Web Video';
@@ -372,7 +359,7 @@ export const BrowserScreen: React.FC = () => {
           style: 'default',
           onPress: async () => {
             setDetectedVideo(null);
-            const safeName = (title.replace(/[^a-zA-Z0-9_-]/g, '_')) + '.mp4';
+            const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_') + '.mp4';
             await DownloadService.startDownload(video.src, safeName, 'video/mp4');
             setToast({
               message: `Download started: "${title.substring(0, 25)}..."`,
@@ -387,7 +374,7 @@ export const BrowserScreen: React.FC = () => {
           subLabel: isHls ? 'HLS High' : 'Direct Stream',
           onSelect: async () => {
             setDetectedVideo(null);
-            const safeName = (title.replace(/[^a-zA-Z0-9_-]/g, '_')) + '_720p.mp4';
+            const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_') + '_720p.mp4';
             await DownloadService.startDownload(video.src, safeName, 'video/mp4');
             setToast({
               message: `Downloading 720p HD: "${title.substring(0, 20)}..."`,
@@ -400,7 +387,7 @@ export const BrowserScreen: React.FC = () => {
           subLabel: 'Fast Download',
           onSelect: async () => {
             setDetectedVideo(null);
-            const safeName = (title.replace(/[^a-zA-Z0-9_-]/g, '_')) + '_480p.mp4';
+            const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_') + '_480p.mp4';
             await DownloadService.startDownload(video.src, safeName, 'video/mp4');
             setToast({
               message: `Downloading 480p: "${title.substring(0, 20)}..."`,
@@ -413,11 +400,9 @@ export const BrowserScreen: React.FC = () => {
   };
 
   const handleFloatingPlay = (video: DetectedVideo) => {
-    Alert.alert('PiP Floating Mode', 'Floating Video player activated.');
     setToast({ message: 'Picture-in-Picture mode active', type: 'info' });
   };
 
-  // WebView message dispatcher (Media Sniffer & Native Hooks)
   // WebView message dispatcher
   const handleWebViewMessage = (event: any) => {
     try {
@@ -465,7 +450,6 @@ export const BrowserScreen: React.FC = () => {
       {detectedVideo && (
         <VideoAssistantBar
           video={detectedVideo}
-          onDownload={handleDownloadDetectedVideo}
           onDownload={handleOpenVideoAssistant}
           onFloatingPlay={handleFloatingPlay}
           onDismiss={() => setDetectedVideo(null)}
@@ -589,8 +573,6 @@ export const BrowserScreen: React.FC = () => {
           });
         }}
         onToggleDesktopSite={handleToggleDesktopSite}
-        onToggleNoImage={() => handleUpdateSettings({ noImageMode: !settings.noImageMode })}
-        onToggleSpeedMode={() => handleUpdateSettings({ speedMode: !settings.speedMode })}
         onToggleNoImage={() => {
           const newVal = !settings.noImageMode;
           handleUpdateSettings({ noImageMode: newVal });
@@ -692,4 +674,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

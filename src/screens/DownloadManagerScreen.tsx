@@ -7,9 +7,8 @@ import {
   FlatList,
   Modal,
   Platform,
-  Alert,
 } from 'react-native';
-import { Feather, Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { DownloadItem } from '../types/browser';
 import { COLORS } from '../constants/theme';
 import { DownloadService } from '../services/NativeDownloadService';
@@ -91,10 +90,6 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
     }
   };
 
-  const handleDelete = async (id: string) => {
-    const updated = downloads.filter((d) => d.id !== id);
-    setDownloads(updated);
-    await StorageService.saveDownloads(updated);
   const confirmDelete = (item: DownloadItem) => {
     setDialog({
       title: 'Delete Download',
@@ -235,7 +230,6 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                     </Text>
                     <Text style={styles.metaText}>
                       {formatBytes(item.downloadedBytes)} / {formatBytes(item.totalBytes)} •{' '}
-                      {formatSpeed(item.speedBps)}
                       {item.status === 'paused' ? 'Paused' : formatSpeed(item.speedBps)}
                     </Text>
                   </View>
@@ -249,7 +243,6 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                   <View style={[styles.progressBar, { width: `${item.progress}%` }]} />
                 </View>
 
-                {/* Controls: Pause/Resume, Cancel */}
                 {/* Controls: Pause/Resume */}
                 <View style={styles.controlRow}>
                   <Text style={styles.progressPercent}>{item.progress}%</Text>
@@ -257,7 +250,6 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                     {item.status === 'downloading' ? (
                       <TouchableOpacity
                         style={styles.actionIconButton}
-                        onPress={() => DownloadService.pause(item.id)}
                         onPress={() => handlePause(item.id)}
                       >
                         <Ionicons name="pause" size={18} color={COLORS.primary} />
@@ -265,19 +257,11 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                     ) : (
                       <TouchableOpacity
                         style={styles.actionIconButton}
-                        onPress={() => DownloadService.resume(item.id)}
                         onPress={() => handleResume(item.id)}
                       >
                         <Ionicons name="play" size={18} color={COLORS.primary} />
                       </TouchableOpacity>
                     )}
-
-                    <TouchableOpacity
-                      style={styles.actionIconButton}
-                      onPress={() => DownloadService.cancel(item.id)}
-                    >
-                      <Ionicons name="close" size={18} color={COLORS.danger} />
-                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -310,7 +294,6 @@ export const DownloadManagerScreen: React.FC<DownloadManagerScreenProps> = ({
                       {formatBytes(item.fileSize || item.downloadedBytes)} • {new Date(item.createdAt).toLocaleDateString()}
                     </Text>
                   </View>
-                  <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id)}>
                   <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item)}>
                     <Ionicons name="trash-outline" size={18} color="#888" />
                   </TouchableOpacity>
@@ -519,4 +502,3 @@ const styles = StyleSheet.create({
     color: '#999',
   },
 });
-

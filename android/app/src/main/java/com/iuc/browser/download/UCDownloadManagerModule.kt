@@ -2,7 +2,6 @@ package com.iuc.browser.download
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -12,9 +11,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
 import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
@@ -24,7 +20,6 @@ import java.util.concurrent.Executors
 class UCDownloadManagerModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
-    private val executor = Executors.newFixedThreadPool(4)
     private val executor = Executors.newFixedThreadPool(6)
     private val activeTasks = ConcurrentHashMap<String, DownloadTask>()
     private val notificationManager =
@@ -66,9 +61,8 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
         val isHls: Boolean,
         @Volatile var isPaused: Boolean = false,
         @Volatile var isCancelled: Boolean = false,
-        @Volatile var downloadedBytes: Long = 0,
-        @Volatile var totalBytes: Long = 0
-        @Volatile var totalBytes: Long = 0,
+        @Volatile var downloadedBytes: Long = 0L,
+        @Volatile var totalBytes: Long = -1L,
         @Volatile var currentSegment: Int = 0,
         @Volatile var totalSegments: Int = 0
     )
@@ -101,6 +95,8 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
             var cleanName = fileName.replace("[^a-zA-Z0-9._-]".toRegex(), "_")
             if (cleanName.isBlank()) {
                 cleanName = "uc_download_" + System.currentTimeMillis()
+            }
+
             val isHls = url.contains(".m3u8") || mimeType?.contains("mpegurl", ignoreCase = true) == true
 
             // If it's an HLS stream, ensure file extension is .mp4
@@ -120,14 +116,13 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
                 url = url,
                 fileName = cleanName,
                 destinationPath = destinationFile.absolutePath,
-                downloadedBytes = 0,
-                totalBytes = -1
-                isHls = isHls
+                isHls = isHls,
+                downloadedBytes = 0L,
+                totalBytes = -1L
             )
             activeTasks[id] = task
 
             executor.execute {
-                runDownload(task)
                 if (isHls) {
                     runHlsDownload(task)
                 } else {
@@ -148,7 +143,6 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
         }
     }
 
-    private fun runDownload(task: DownloadTask) {
     /**
      * HLS M3U8 Downloader: Fetches playlist, extracts video chunks, and concatenates them into an MP4 file.
      */
@@ -158,6 +152,7 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
         try {
             val file = File(task.destinationPath)
             outputStream = FileOutputStream(file, false)
+            val out = outputStream
 
             val segments = resolveHlsSegments(task.url)
             if (segments.isEmpty()) {
@@ -175,7 +170,7 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
 
-            for ((index, segmentUrl) in segments.withIndex()) {
+            for (segmentUrl in segments) {
                 if (task.isCancelled) {
                     file.delete()
                     activeTasks.remove(task.id)
@@ -195,7 +190,7 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
 
                 val segBytes = downloadSegment(segmentUrl)
                 if (segBytes != null && segBytes.isNotEmpty()) {
-                    outputStream.write(segBytes)
+                    out.write(segBytes)
                     task.downloadedBytes += segBytes.size
                     bytesSinceLastUpdate += segBytes.size
                 }
@@ -229,7 +224,7 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
                 }
             }
 
-            outputStream.flush()
+            out.flush()
             activeTasks.remove(task.id)
 
             val completeNotif = NotificationCompat.Builder(reactContext, CHANNEL_ID)
@@ -320,7 +315,7 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
     }
 
     private fun downloadSegment(segmentUrl: String): ByteArray? {
-        try {
+        return try {
             val url = URL(segmentUrl)
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
@@ -337,9 +332,9 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
             }
             stream.close()
             conn.disconnect()
-            return byteStream.toByteArray()
+            byteStream.toByteArray()
         } catch (_: Exception) {
-            return null
+            null
         }
     }
 
@@ -360,25 +355,25 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
             }
 
             val downloadUrl = URL(task.url)
-            connection = downloadUrl.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 15000
-            connection.readTimeout = 20000
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13; Mobile) UCBrowser/13.4.0")
-            connection.setRequestProperty("User-Agent", USER_AGENT)
+            val conn = downloadUrl.openConnection() as HttpURLConnection
+            connection = conn
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 15000
+            conn.readTimeout = 20000
+            conn.setRequestProperty("User-Agent", USER_AGENT)
 
             if (existingBytes > 0) {
-                connection.setRequestProperty("Range", "bytes=$existingBytes-")
+                conn.setRequestProperty("Range", "bytes=$existingBytes-")
             }
 
-            connection.connect()
-            val responseCode = connection.responseCode
+            conn.connect()
+            val responseCode = conn.responseCode
 
             if (responseCode !in 200..299 && responseCode != 206) {
                 throw Exception("Server returned HTTP response code: $responseCode")
             }
 
-            val contentLength = connection.contentLengthLong
+            val contentLength = conn.contentLengthLong
             task.totalBytes = if (responseCode == 206) {
                 existingBytes + contentLength
             } else {
@@ -386,8 +381,10 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
             }
             task.downloadedBytes = existingBytes
 
-            inputStream = connection.inputStream
-            outputStream = FileOutputStream(file, existingBytes > 0)
+            val stream = conn.inputStream
+            inputStream = stream
+            val out = FileOutputStream(file, existingBytes > 0)
+            outputStream = out
 
             val buffer = ByteArray(32 * 1024)
             var bytesRead: Int
@@ -400,7 +397,7 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
 
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+            while (stream.read(buffer).also { bytesRead = it } != -1) {
                 if (task.isCancelled) {
                     file.delete()
                     activeTasks.remove(task.id)
@@ -429,14 +426,13 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
                     return
                 }
 
-                outputStream.write(buffer, 0, bytesRead)
+                out.write(buffer, 0, bytesRead)
                 task.downloadedBytes += bytesRead
                 bytesSinceLastUpdate += bytesRead
 
                 val now = System.currentTimeMillis()
                 val delta = now - lastUpdateTime
                 if (delta >= 500) {
-                    val speedBps = (bytesSinceLastUpdate * 1000) / delta
                     val speedBps = (bytesSinceLastUpdate * 1000) / Math.max(delta, 1)
                     val progress = if (task.totalBytes > 0) {
                         ((task.downloadedBytes * 100) / task.totalBytes).toInt()
@@ -464,7 +460,7 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
                 }
             }
 
-            outputStream.flush()
+            out.flush()
             activeTasks.remove(task.id)
 
             // Complete Notification
@@ -517,9 +513,6 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
         val task = activeTasks[id]
         if (task != null) {
             task.isPaused = true
-            promise.resolve(true)
-        } else {
-            promise.reject("NOT_FOUND", "Download task not found")
         }
         promise.resolve(true)
     }
@@ -530,12 +523,8 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
         if (task != null) {
             task.isPaused = false
             executor.execute {
-                runDownload(task)
                 if (task.isHls) runHlsDownload(task) else runStandardDownload(task)
             }
-            promise.resolve(true)
-        } else {
-            promise.reject("NOT_FOUND", "Download task not found")
         }
         promise.resolve(true)
     }
@@ -545,9 +534,6 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
         val task = activeTasks[id]
         if (task != null) {
             task.isCancelled = true
-            promise.resolve(true)
-        } else {
-            promise.reject("NOT_FOUND", "Download task not found")
         }
         promise.resolve(true)
     }
@@ -597,4 +583,3 @@ class UCDownloadManagerModule(private val reactContext: ReactApplicationContext)
         }
     }
 }
-

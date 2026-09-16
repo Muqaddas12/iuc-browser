@@ -8,7 +8,6 @@ import {
   Modal,
   Platform,
   TextInput,
-  Alert,
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { Bookmark, HistoryItem } from '../types/browser';
@@ -77,15 +76,6 @@ export const BookmarksHistoryScreen: React.FC<BookmarksHistoryScreenProps> = ({
     setToast({ message: 'History item removed', type: 'info' });
   };
 
-  const handleClearHistory = async () => {
-    Alert.alert('Clear History', 'Are you sure you want to clear all browsing history?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
-        style: 'destructive',
-        onPress: async () => {
-          await StorageService.clearHistory();
-          loadData();
   const handleClearHistory = () => {
     setDialog({
       title: 'Clear History',
@@ -102,8 +92,6 @@ export const BookmarksHistoryScreen: React.FC<BookmarksHistoryScreenProps> = ({
             setToast({ message: 'Browsing history cleared', type: 'success' });
           },
         },
-      },
-    ]);
       ],
     });
   };
@@ -430,4 +418,3 @@ const styles = StyleSheet.create({
     color: '#999',
   },
 });
-

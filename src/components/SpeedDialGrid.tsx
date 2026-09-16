@@ -80,6 +80,26 @@ export const SpeedDialGrid: React.FC<SpeedDialGridProps> = ({
 
   return (
     <View style={styles.container}>
+      {/* Brand Mascot & Logo Header */}
+      <View style={styles.brandHeader}>
+        <Image
+          source={require('../../assets/icon.png')}
+          style={styles.brandLogo}
+        />
+        <View style={styles.brandTextWrap}>
+          <View style={styles.brandRow}>
+            <Text style={[styles.brandTitle, isDark && { color: '#FFF' }]}>UC Browser</Text>
+            <View style={styles.turboBadge}>
+              <Ionicons name="flash" size={10} color="#FFF" />
+              <Text style={styles.turboText}>TURBO</Text>
+            </View>
+          </View>
+          <Text style={[styles.brandSub, isDark ? { color: '#A69EB8' } : { color: '#888892' }]}>
+            Fast, Secure & Ad-Free Web
+          </Text>
+        </View>
+      </View>
+
       <View style={styles.gridContainer}>
         {shortcuts.map((item) => (
           <TouchableOpacity
@@ -218,6 +238,52 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  brandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  brandLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+  brandTextWrap: {
+    flex: 1,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1C1C1E',
+    letterSpacing: -0.2,
+  },
+  turboBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  turboText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '900',
+    marginLeft: 2,
+  },
+  brandSub: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '500',
   },
   gridContainer: {
     flexDirection: 'row',
