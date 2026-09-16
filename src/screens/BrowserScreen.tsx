@@ -26,6 +26,7 @@ import { COLORS, SEARCH_ENGINES, UC_USER_AGENTS } from '../constants/theme';
 import { StorageService } from '../services/StorageService';
 import { DownloadService } from '../services/NativeDownloadService';
 import { AD_BLOCK_JS } from '../services/AdBlockEngine';
+import { AD_BLOCK_JS, isAdUrl } from '../services/AdBlockEngine';
 import { MEDIA_SNIFFER_JS } from '../services/MediaSniffer';
 import { getNightModeScript } from '../services/NightModeEngine';
 
@@ -550,9 +551,15 @@ export const BrowserScreen: React.FC = () => {
   };
 
   // Intercept downloads and external app schemes
+  // Intercept downloads, ad networks, and external app schemes
   const handleShouldStartLoadWithRequest = (request: any) => {
     const { url } = request;
     if (!url) return false;
+
+    // 0. High-Priority AdBlock Filter
+    if (settings.adBlockEnabled && isAdUrl(url)) {
+      return false;
+    }
 
     // 1. Intent / Market Schemes -> Translate to In-Browser Web URL
     if (url.startsWith('intent:') || url.startsWith('market:')) {
@@ -689,6 +696,11 @@ export const BrowserScreen: React.FC = () => {
             source={{ uri: activeTab.initialUrl || activeTab.url }}
             style={styles.webView}
             injectedJavaScriptBeforeContentLoaded={MEDIA_SNIFFER_JS}
+            injectedJavaScriptBeforeContentLoaded={`
+              ${settings.adBlockEnabled ? AD_BLOCK_JS : ''}
+              ${MEDIA_SNIFFER_JS}
+              true;
+            `}
             injectedJavaScript={injectedBundle}
             userAgent={
               settings.desktopSite
@@ -713,6 +725,9 @@ export const BrowserScreen: React.FC = () => {
             onOpenWindow={(syntheticEvent) => {
               const { targetUrl } = syntheticEvent.nativeEvent;
               if (targetUrl && targetUrl !== 'about:blank') {
+                if (settings.adBlockEnabled && isAdUrl(targetUrl)) {
+                  return; // Block ad/popup window
+                }
                 handleNewTab(activeTab?.isIncognito || false, targetUrl);
               }
             }}
