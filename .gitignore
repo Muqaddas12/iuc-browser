@@ -25,3 +25,4 @@ android/.idea/
 .env.local
 .env*.local
 *.log
+
