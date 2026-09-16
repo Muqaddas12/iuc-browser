@@ -346,11 +346,57 @@ export const BrowserScreen: React.FC = () => {
   // Video Assistant & Dialog
   const handleOpenVideoAssistant = (video: DetectedVideo) => {
     const title = video.title || 'Web Video';
-    const isHls = video.src.includes('.m3u8');
+    const isHls = video.isHls || video.src.includes('.m3u8');
+
+    // Build format options
+    const downloadOptions = video.formats && video.formats.length > 0
+      ? video.formats.map((fmt) => ({
+          label: fmt.quality,
+          subLabel: fmt.subLabel || (fmt.ext ? fmt.ext.toUpperCase() : 'MP4'),
+          onSelect: async () => {
+            setDetectedVideo(null);
+            const ext = fmt.ext || 'mp4';
+            const safeName = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}_${fmt.quality.replace(/[^a-zA-Z0-9]/g, '')}.${ext}`;
+            const targetUrl = fmt.url || video.src;
+            await DownloadService.startDownload(targetUrl, safeName, ext === 'mp3' ? 'audio/mpeg' : 'video/mp4');
+            setToast({
+              message: `Downloading ${fmt.quality}: "${title.substring(0, 20)}..."`,
+              type: 'download',
+            });
+          },
+        }))
+      : [
+          {
+            label: '720p HD (MP4)',
+            subLabel: isHls ? 'HLS Stream to MP4' : 'Direct High Quality',
+            onSelect: async () => {
+              setDetectedVideo(null);
+              const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_') + '_720p.mp4';
+              await DownloadService.startDownload(video.src, safeName, 'video/mp4');
+              setToast({
+                message: `Downloading 720p HD: "${title.substring(0, 20)}..."`,
+                type: 'download',
+              });
+            },
+          },
+          {
+            label: '480p Standard (MP4)',
+            subLabel: 'Fast Download',
+            onSelect: async () => {
+              setDetectedVideo(null);
+              const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_') + '_480p.mp4';
+              await DownloadService.startDownload(video.src, safeName, 'video/mp4');
+              setToast({
+                message: `Downloading 480p: "${title.substring(0, 20)}..."`,
+                type: 'download',
+              });
+            },
+          },
+        ];
 
     setDialog({
       title: 'Download Video',
-      message: `${title}\nFormat: ${isHls ? 'HLS Stream (Converting to MP4)' : 'MP4 HD Video'}`,
+      message: `${title}\nFormat: ${isHls ? 'HLS Stream (.m3u8 -> .mp4)' : 'MP4 Video Stream'}`,
       icon: 'video',
       buttons: [
         { text: 'Cancel', style: 'cancel', onPress: () => setDialog(null) },
@@ -368,34 +414,7 @@ export const BrowserScreen: React.FC = () => {
           },
         },
       ],
-      options: [
-        {
-          label: '720p HD (MP4)',
-          subLabel: isHls ? 'HLS High' : 'Direct Stream',
-          onSelect: async () => {
-            setDetectedVideo(null);
-            const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_') + '_720p.mp4';
-            await DownloadService.startDownload(video.src, safeName, 'video/mp4');
-            setToast({
-              message: `Downloading 720p HD: "${title.substring(0, 20)}..."`,
-              type: 'download',
-            });
-          },
-        },
-        {
-          label: '480p Standard (MP4)',
-          subLabel: 'Fast Download',
-          onSelect: async () => {
-            setDetectedVideo(null);
-            const safeName = title.replace(/[^a-zA-Z0-9_-]/g, '_') + '_480p.mp4';
-            await DownloadService.startDownload(video.src, safeName, 'video/mp4');
-            setToast({
-              message: `Downloading 480p: "${title.substring(0, 20)}..."`,
-              type: 'download',
-            });
-          },
-        },
-      ],
+      options: downloadOptions,
     });
   };
 
@@ -413,7 +432,7 @@ export const BrowserScreen: React.FC = () => {
     } catch {}
   };
 
-  // Build injected JavaScript bundle
+  // Build injected JavaScript bundle for DOM ready
   const injectedBundle = `
     ${settings.adBlockEnabled ? AD_BLOCK_JS : ''}
     ${MEDIA_SNIFFER_JS}
@@ -487,6 +506,7 @@ export const BrowserScreen: React.FC = () => {
             }}
             source={{ uri: activeTab.url }}
             style={styles.webView}
+            injectedJavaScriptBeforeContentLoaded={MEDIA_SNIFFER_JS}
             injectedJavaScript={injectedBundle}
             userAgent={
               settings.desktopSite
@@ -495,9 +515,19 @@ export const BrowserScreen: React.FC = () => {
             }
             javaScriptEnabled={true}
             domStorageEnabled={true}
+            databaseEnabled={true}
+            cacheEnabled={true}
+            thirdPartyCookiesEnabled={true}
+            sharedCookiesEnabled={true}
             allowsInlineMediaPlayback={true}
             mediaPlaybackRequiresUserAction={false}
+            allowsFullscreenVideo={true}
             allowsBackForwardNavigationGestures={true}
+            mixedContentMode="always"
+            androidHardwareAccelerationDisabled={false}
+            androidLayerType="hardware"
+            originWhitelist={['*']}
+            setSupportMultipleWindows={false}
             onNavigationStateChange={(navState) => {
               updateTab(activeTabId, {
                 canGoBack: navState.canGoBack,
@@ -526,7 +556,16 @@ export const BrowserScreen: React.FC = () => {
             onMessage={handleWebViewMessage}
             onError={(syntheticEvent) => {
               const { nativeEvent } = syntheticEvent;
-              console.warn('WebView error: ', nativeEvent);
+              // Ignore benign / non-fatal chunk disconnects on dynamic media sites
+              if (
+                nativeEvent.description &&
+                (nativeEvent.description.includes('ERR_INCOMPLETE_CHUNKED_ENCODING') ||
+                 nativeEvent.description.includes('ERR_ABORTED') ||
+                 nativeEvent.description.includes('ERR_BLOCKED_BY_CLIENT'))
+              ) {
+                return;
+              }
+              console.warn('WebView notice: ', nativeEvent.description || nativeEvent);
             }}
           />
         )}

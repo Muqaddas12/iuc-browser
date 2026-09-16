@@ -55,12 +55,21 @@ export interface DownloadItem {
 
 export type SearchEngine = 'google' | 'bing' | 'duckduckgo' | 'yahoo';
 
+export interface VideoFormatOption {
+  quality: string;
+  ext?: string;
+  url?: string;
+  subLabel?: string;
+}
+
 export interface DetectedVideo {
   src: string;
   title?: string;
   duration?: number;
   poster?: string;
   type?: string;
+  isHls?: boolean;
+  formats?: VideoFormatOption[];
 }
 
 export interface BrowserSettings {
