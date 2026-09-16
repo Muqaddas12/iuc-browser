@@ -35,6 +35,7 @@ export const BrowserScreen: React.FC = () => {
     {
       id: 'tab_default_1',
       url: 'uc://home',
+      initialUrl: 'uc://home',
       title: 'Home',
       canGoBack: false,
       canGoForward: false,
@@ -74,6 +75,7 @@ export const BrowserScreen: React.FC = () => {
   const [detectedVideo, setDetectedVideo] = useState<DetectedVideo | null>(null);
 
   const webViewRefs = useRef<{ [key: string]: WebView | null }>({});
+  const lastBackPressedRef = useRef<number>(0);
 
   // Active Tab
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
@@ -95,10 +97,13 @@ export const BrowserScreen: React.FC = () => {
   // Hardware Back Button Handler (Android)
   useEffect(() => {
     const onBackPress = () => {
+      // 1. Close active dialogs
       if (dialog) {
         setDialog(null);
         return true;
       }
+
+      // 2. Close any open modals/drawers
       if (isMenuOpen) {
         setIsMenuOpen(false);
         return true;
@@ -120,19 +125,34 @@ export const BrowserScreen: React.FC = () => {
         return true;
       }
 
-      // Handle WebView back navigation
+      // 3. Handle WebView internal back navigation if webpage has history
       const currentRef = webViewRefs.current[activeTabId];
       if (currentRef && activeTab && activeTab.canGoBack) {
         currentRef.goBack();
         return true;
       }
 
+      // 4. Return to home screen if browsing a webpage
       if (!isHomePage) {
         handleGoHome();
         return true;
       }
 
-      return false;
+      // 5. Close active tab if more than 1 tab exists
+      if (tabs.length > 1) {
+        handleCloseTab(activeTabId);
+        return true;
+      }
+
+      // 6. Double-tap back button to safely exit app
+      const now = Date.now();
+      if (now - lastBackPressedRef.current < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBackPressedRef.current = now;
+      setToast({ message: 'Press back again to exit', type: 'info' });
+      return true;
     };
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
@@ -147,6 +167,7 @@ export const BrowserScreen: React.FC = () => {
     activeTabId,
     activeTab,
     isHomePage,
+    tabs.length,
   ]);
 
   // Tab Helpers
@@ -161,6 +182,7 @@ export const BrowserScreen: React.FC = () => {
     const newTabItem: Tab = {
       id: newId,
       url: initialUrl,
+      initialUrl: initialUrl,
       title: initialUrl === 'uc://home' ? 'Home' : initialUrl,
       canGoBack: false,
       canGoForward: false,
@@ -187,6 +209,7 @@ export const BrowserScreen: React.FC = () => {
         {
           id: fallbackId,
           url: 'uc://home',
+          initialUrl: 'uc://home',
           title: 'Home',
           canGoBack: false,
           canGoForward: false,
@@ -213,6 +236,7 @@ export const BrowserScreen: React.FC = () => {
       {
         id: fallbackId,
         url: 'uc://home',
+        initialUrl: 'uc://home',
         title: 'Home',
         canGoBack: false,
         canGoForward: false,
@@ -247,13 +271,14 @@ export const BrowserScreen: React.FC = () => {
     }
 
     setDetectedVideo(null);
-    updateTab(activeTabId, { url: finalUrl, title: finalUrl });
+    updateTab(activeTabId, { url: finalUrl, initialUrl: finalUrl, title: finalUrl });
   };
 
   const handleGoHome = () => {
     setDetectedVideo(null);
     updateTab(activeTabId, {
       url: 'uc://home',
+      initialUrl: 'uc://home',
       title: 'Home',
       canGoBack: false,
       canGoForward: false,
@@ -661,7 +686,7 @@ export const BrowserScreen: React.FC = () => {
             ref={(ref) => {
               webViewRefs.current[activeTabId] = ref;
             }}
-            source={{ uri: activeTab.url }}
+            source={{ uri: activeTab.initialUrl || activeTab.url }}
             style={styles.webView}
             injectedJavaScriptBeforeContentLoaded={MEDIA_SNIFFER_JS}
             injectedJavaScript={injectedBundle}
@@ -684,7 +709,13 @@ export const BrowserScreen: React.FC = () => {
             androidHardwareAccelerationDisabled={false}
             androidLayerType="hardware"
             originWhitelist={['*']}
-            setSupportMultipleWindows={false}
+            setSupportMultipleWindows={true}
+            onOpenWindow={(syntheticEvent) => {
+              const { targetUrl } = syntheticEvent.nativeEvent;
+              if (targetUrl && targetUrl !== 'about:blank') {
+                handleNewTab(activeTab?.isIncognito || false, targetUrl);
+              }
+            }}
             onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
             onNavigationStateChange={(navState) => {
               updateTab(activeTabId, {

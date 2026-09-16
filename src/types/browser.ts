@@ -1,6 +1,7 @@
 export interface Tab {
   id: string;
   url: string;
+  initialUrl?: string;
   title: string;
   favicon?: string;
   canGoBack: boolean;
