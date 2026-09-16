@@ -1,0 +1,27 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo
+.expo/
+web-build/
+dist/
+
+# Android Build artifacts
+android/.gradle/
+android/app/build/
+android/build/
+android/.idea/
+*.apk
+*.aab
+
+# macOS
+.DS_Store
+
+# Temporary & Environment
+.env
+.env.local
+.env*.local
+*.log
