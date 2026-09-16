@@ -8,6 +8,7 @@ export const MEDIA_SNIFFER_JS = `
   var detectedMap = {};
   var isYouTube = /youtube\\.com|youtu\\.be/i.test(window.location.hostname);
   var isOkRu = /ok\\.ru/i.test(window.location.hostname);
+  var isPlayStore = /play\\.google\\.com/i.test(window.location.hostname);
 
   var downloadExtensions = [
     '.apk', '.zip', '.rar', '.7z', '.tar', '.gz', '.pdf',
@@ -257,7 +258,6 @@ export const MEDIA_SNIFFER_JS = `
             isHls: vSrc.includes('.m3u8')
           });
         } else if (vSrc && vSrc.startsWith('blob:')) {
-          // OK.ru uses blob: with HLS under the hood, pass the canonical video page URL if direct stream is obscured
           var okVideoIdMatch = window.location.pathname.match(/\\/video\\/(\\d+)/);
           var canonicalUrl = okVideoIdMatch
             ? 'https://ok.ru/video/' + okVideoIdMatch[1]
@@ -275,7 +275,6 @@ export const MEDIA_SNIFFER_JS = `
   // 7. General DOM <video> & <source> & Meta Scanner
   function scanDom() {
     try {
-      // Scan <video> and <audio> elements
       var mediaElements = document.querySelectorAll('video, audio');
       for (var i = 0; i < mediaElements.length; i++) {
         var el = mediaElements[i];
@@ -295,7 +294,6 @@ export const MEDIA_SNIFFER_JS = `
         }
       }
 
-      // Scan meta tags (OpenGraph video, Twitter player)
       var metaVideo = document.querySelector(
         'meta[property="og:video"], meta[property="og:video:url"], meta[property="og:video:secure_url"], meta[name="twitter:player:stream"]'
       );
@@ -306,7 +304,6 @@ export const MEDIA_SNIFFER_JS = `
         }
       }
 
-      // Scan iframes with video embeds
       var iframes = document.querySelectorAll('iframe[src*="video"], iframe[src*="embed"], iframe[src*="player"]');
       for (var j = 0; j < iframes.length; j++) {
         var ifrSrc = iframes[j].src;
@@ -317,7 +314,7 @@ export const MEDIA_SNIFFER_JS = `
     } catch (e) {}
   }
 
-  // 8. Intercept Direct Download Link Clicks
+  // 8. Intercept Direct Download Link Clicks & Play Store App Clicks
   document.addEventListener('click', function(e) {
     try {
       var target = e.target;
@@ -325,8 +322,10 @@ export const MEDIA_SNIFFER_JS = `
         target = target.parentNode;
       }
       if (target && target.tagName === 'A') {
-        var href = target.getAttribute('href');
+        var href = target.getAttribute('href') || target.href;
         var downloadAttr = target.getAttribute('download');
+
+        // Check for download links
         if (href && (downloadAttr !== null || isDownloadableFile(href))) {
           var fileName = downloadAttr || getFileNameFromUrl(href);
           if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -339,6 +338,20 @@ export const MEDIA_SNIFFER_JS = `
                 fileName: fileName
               }
             }));
+            return;
+          }
+        }
+
+        // Check for Google Play app cards / intent links inside the webpage
+        if (href && (href.startsWith('intent:') || href.startsWith('market:'))) {
+          e.preventDefault();
+          e.stopPropagation();
+          var idMatch = href.match(/[?&]id=([^&;#]+)/) || href.match(/\/details\?id=([^&;#]+)/) || href.match(/details\?id=([^&;#]+)/);
+          if (idMatch && idMatch[1] && idMatch[1] !== 'com.android.vending') {
+            window.location.href = 'https://play.google.com/store/apps/details?id=' + idMatch[1];
+          } else if (href.includes('play.google.com/store/apps/details')) {
+            var cleanUrl = href.replace(/^intent:\/\//, 'https://').split('#Intent;')[0].split('#intent;')[0];
+            window.location.href = cleanUrl;
           }
         }
       }
@@ -356,7 +369,6 @@ export const MEDIA_SNIFFER_JS = `
     scanDom();
   }, 1500);
 
-  // Stop scanning interval after 2 minutes to conserve battery
   setTimeout(function() {
     clearInterval(scanInterval);
   }, 120000);
