@@ -8,6 +8,7 @@ import com.facebook.react.uimanager.ReactShadowNode
 import com.facebook.react.uimanager.ViewManager
 import com.iuc.browser.download.UCDownloadManagerModule
 import com.iuc.browser.pip.UCPiPModule
+import com.iuc.browser.web.UCWebEngineManager
 
 class UCBrowserPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
@@ -19,6 +20,10 @@ class UCBrowserPackage : ReactPackage {
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<View, ReactShadowNode<*>>> {
         return emptyList()
+        @Suppress("UNCHECKED_CAST")
+        return listOf(
+            UCWebEngineManager() as ViewManager<View, ReactShadowNode<*>>
+        )
     }
 }
 

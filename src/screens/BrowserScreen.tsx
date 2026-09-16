@@ -452,6 +452,8 @@ export const BrowserScreen: React.FC = () => {
 
   // External App Schemes & Android Intent Dispatcher
   const handleExternalAppScheme = async (url: string) => {
+  // In-Browser Scheme Translator: Keeps all navigation inside the browser
+  const handleExternalAppScheme = (url: string) => {
     try {
       if (url.startsWith('intent://')) {
         const fallbackMatch = url.match(/browser_fallback_url=([^;]+)/);
@@ -474,6 +476,8 @@ export const BrowserScreen: React.FC = () => {
           } else {
             await Linking.openURL(playStoreUrl).catch(() => {});
           }
+          const inBrowserPlayStoreUrl = `https://play.google.com/store/apps/details?id=${pkg}`;
+          updateTab(activeTabId, { url: inBrowserPlayStoreUrl, title: 'Google Play Store' });
           return;
         }
 
@@ -484,6 +488,10 @@ export const BrowserScreen: React.FC = () => {
             await Linking.openURL(customScheme);
             return;
           }
+        if (schemeMatch && (schemeMatch[1] === 'http' || schemeMatch[1] === 'https')) {
+          const webUrl = schemeMatch[1] + '://' + url.replace(/^intent:\/\//, '').split('#')[0];
+          updateTab(activeTabId, { url: webUrl, title: webUrl });
+          return;
         }
       }
 
@@ -494,6 +502,10 @@ export const BrowserScreen: React.FC = () => {
           await Linking.openURL(url);
         } else if (pkgMatch) {
           await Linking.openURL(`https://play.google.com/store/apps/details?id=${pkgMatch[1]}`).catch(() => {});
+        if (pkgMatch) {
+          const inBrowserPlayStoreUrl = `https://play.google.com/store/apps/details?id=${pkgMatch[1]}`;
+          updateTab(activeTabId, { url: inBrowserPlayStoreUrl, title: 'Google Play Store' });
+          return;
         }
         return;
       }
@@ -503,9 +515,13 @@ export const BrowserScreen: React.FC = () => {
         await Linking.openURL(url);
       } else {
         console.warn('Could not launch external URL scheme:', url);
+      // If it's a telephone or email link, open native handler
+      if (url.startsWith('tel:') || url.startsWith('mailto:') || url.startsWith('sms:')) {
+        Linking.openURL(url).catch(() => {});
       }
     } catch (err) {
       console.warn('Failed to dispatch external URL scheme:', err);
+      console.warn('In-browser scheme navigation:', err);
     }
   };
 
@@ -515,6 +531,12 @@ export const BrowserScreen: React.FC = () => {
     if (!url) return false;
 
     // 1. External App Schemes (market://, intent://, whatsapp://, tg://, tel:, mailto:, sms:, play.google.com)
+    // 1. PlayStore web pages load 100% inside the browser
+    if (url.includes('play.google.com')) {
+      return true;
+    }
+
+    // 2. Custom app schemes (market://, intent://) are translated to in-browser URLs
     if (
       url.startsWith('market://') ||
       url.startsWith('intent://') ||
@@ -524,6 +546,7 @@ export const BrowserScreen: React.FC = () => {
       url.startsWith('mailto:') ||
       url.startsWith('sms:') ||
       url.startsWith('fb:')
+      url.startsWith('sms:')
     ) {
       handleExternalAppScheme(url);
       return false;
@@ -535,6 +558,7 @@ export const BrowserScreen: React.FC = () => {
     }
 
     // 2. Direct downloadable file links (.apk, .zip, .pdf, .mp4, etc.)
+    // 3. Direct downloadable file links (.apk, .zip, .pdf, .mp4, etc.)
     const lowerClean = url.toLowerCase().split('?')[0].split('#')[0];
     const downloadableExts = [
       '.apk', '.zip', '.rar', '.7z', '.tar', '.gz', '.pdf',
