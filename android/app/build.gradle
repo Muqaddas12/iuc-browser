@@ -173,4 +173,14 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // Mozilla GeckoView Standalone Quantum Engine
+    implementation "org.mozilla.geckoview:geckoview-omni:139.0.20250609112858"
 }
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        freeCompilerArgs += ["-Xskip-metadata-version-check"]
+    }
+}
+

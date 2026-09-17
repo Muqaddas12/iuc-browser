@@ -1,23 +1,18 @@
 export interface Tab {
   id: string;
   url: string;
-  initialUrl?: string;
   title: string;
-  favicon?: string;
   canGoBack: boolean;
   canGoForward: boolean;
   isLoading: boolean;
-  progress: number;
-  isIncognito: boolean;
-  screenshot?: string;
-  createdAt: number;
+  workspaceId: string;
+  isReaderMode?: boolean;
 }
 
 export interface Bookmark {
   id: string;
   title: string;
   url: string;
-  favicon?: string;
   createdAt: number;
 }
 
@@ -28,60 +23,64 @@ export interface HistoryItem {
   timestamp: number;
 }
 
-export interface ShortcutItem {
+export interface Workspace {
   id: string;
+  name: string;
+  icon: string;
+  color: string;
+}
+
+export interface PasswordItem {
+  id: string;
+  site: string;
+  username: string;
+  password: string;
+  updatedAt: number;
+}
+
+export interface ExtensionItem {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  script: string;
+  author?: string;
+  version?: string;
+}
+
+export interface ProxySettings {
+  enabled: boolean;
+  type: 'tor' | 'socks5' | 'http';
+  host: string;
+  port: number;
+}
+
+export interface ReaderArticle {
   title: string;
+  byline?: string;
+  content: string;
+  readingTimeMinutes: number;
   url: string;
-  iconName?: string;
-  iconColor?: string;
-  customIcon?: string;
-  badge?: string;
 }
 
-export interface DownloadItem {
+export interface ChatMessage {
   id: string;
-  url: string;
-  fileName: string;
-  filePath?: string;
-  fileSize?: number;
-  downloadedBytes: number;
-  totalBytes: number;
-  progress: number;
-  speedBps: number;
-  status: 'downloading' | 'paused' | 'completed' | 'cancelled' | 'error';
-  mimeType?: string;
-  category: 'all' | 'video' | 'music' | 'image' | 'apk' | 'doc' | 'other';
-  createdAt: number;
-}
-
-export type SearchEngine = 'google' | 'bing' | 'duckduckgo' | 'yahoo';
-
-export interface VideoFormatOption {
-  quality: string;
-  ext?: string;
-  url?: string;
-  subLabel?: string;
-}
-
-export interface DetectedVideo {
-  src: string;
-  title?: string;
-  duration?: number;
-  poster?: string;
-  type?: string;
-  isHls?: boolean;
-  formats?: VideoFormatOption[];
+  sender: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
 }
 
 export interface BrowserSettings {
-  searchEngine: SearchEngine;
+  searchEngine: 'duckduckgo' | 'brave' | 'startpage' | 'google' | 'bing';
   adBlockEnabled: boolean;
-  nightModeEnabled: boolean;
-  noImageMode: boolean;
-  speedMode: boolean;
-  desktopSite: boolean;
-  saveHistory: boolean;
-  downloadPath: string;
-  userAgentType: 'mobile' | 'desktop' | 'custom';
+  desktopMode: boolean;
+  antiFingerprinting: boolean;
+  cookieConsentBlocker: boolean;
+  youtubeAdBlocker: boolean;
+  torProxyEnabled: boolean;
+  torProxyPort: number;
+  splitScreenEnabled: boolean;
+  verticalTabsEnabled: boolean;
+  readerTheme: 'dark' | 'sepia' | 'light';
+  activeWorkspaceId: string;
 }
-

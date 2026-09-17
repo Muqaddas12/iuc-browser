@@ -2,115 +2,163 @@ package com.iuc.browser.web
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
-import android.net.http.SslError
-import android.os.Build
-import android.view.View
-import android.webkit.*
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.events.RCTEventEmitter
+import com.iuc.browser.adblock.AdBlocker
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.GeckoView
 
-@SuppressLint("SetJavaScriptEnabled", "ViewConstructor")
-class UCWebEngineView(context: Context) : WebView(context) {
+@SuppressLint("ViewConstructor")
+class UCWebEngineView(context: Context) : FrameLayout(context) {
+
+    private val geckoView: GeckoView = GeckoView(context)
+    private val session: GeckoSession = GeckoSession()
+
+    private var currentUrl: String = ""
+    private var currentTitle: String = ""
+    private var canGoBack: Boolean = false
+    private var canGoForward: Boolean = false
 
     init {
-        setupWebSettings()
-        setupClients()
+        val params = LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        addView(geckoView, params)
+
+        // Configure Session Settings
+        session.settings.useTrackingProtection = true
+        session.settings.viewportMode = GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+
+        setupDelegates()
+
+        // Attach Session to Runtime and View
+        val runtime = GeckoRuntimeManager.get(context)
+        session.open(runtime)
+        geckoView.setSession(session)
     }
 
-    private fun setupWebSettings() {
-        val s = settings
-        s.javaScriptEnabled = true
-        s.domStorageEnabled = true
-        s.databaseEnabled = true
-        s.setSupportZoom(true)
-        s.builtInZoomControls = true
-        s.displayZoomControls = false
-        s.loadWithOverviewMode = true
-        s.useWideViewPort = true
-        s.allowFileAccess = true
-        s.allowContentAccess = true
-        s.mediaPlaybackRequiresUserGesture = false
-        s.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        s.cacheMode = WebSettings.LOAD_DEFAULT
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            s.safeBrowsingEnabled = false
-        }
-
-        setLayerType(View.LAYER_TYPE_HARDWARE, null)
-
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        cookieManager.setAcceptThirdPartyCookies(this, true)
-    }
-
-    private fun setupClients() {
-        webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                emitEvent("onEnginePageStarted", Arguments.createMap().apply {
-                    putString("url", url ?: "")
-                })
+    private fun setupDelegates() {
+        // Navigation Delegate
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onCanGoBack(session: GeckoSession, canGoBackValue: Boolean) {
+                canGoBack = canGoBackValue
             }
 
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                emitEvent("onEnginePageFinished", Arguments.createMap().apply {
-                    putString("url", url ?: "")
-                    putString("title", title ?: url ?: "")
-                })
+            override fun onCanGoForward(session: GeckoSession, canGoForwardValue: Boolean) {
+                canGoForward = canGoForwardValue
             }
 
-            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-                // Allow secure traversal without premature termination
-                handler?.proceed()
-            }
-
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val uri = request?.url?.toString() ?: return false
-                if (uri.startsWith("market://")) {
-                    val pkg = uri.substringAfter("id=", "")
-                    if (pkg.isNotEmpty()) {
-                        view?.loadUrl("https://play.google.com/store/apps/details?id=$pkg")
-                        return true
-                    }
+            override fun onLoadRequest(
+                session: GeckoSession,
+                request: GeckoSession.NavigationDelegate.LoadRequest
+            ): GeckoResult<AllowOrDeny>? {
+                val targetUrl = request.uri
+                if (AdBlocker.isEnabled && AdBlocker.isAdUrl(targetUrl)) {
+                    return GeckoResult.deny()
                 }
-                return false
+                return GeckoResult.allow()
+            }
+
+            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                if (uri.isNotBlank()) {
+                    loadUrl(uri)
+                }
+                return GeckoResult.fromValue(null)
             }
         }
 
-        webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                super.onProgressChanged(view, newProgress)
-                emitEvent("onEngineProgress", Arguments.createMap().apply {
-                    putInt("progress", newProgress)
-                })
+        // Progress Delegate
+        session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
+                currentUrl = url
+                val event = Arguments.createMap().apply {
+                    putString("url", url)
+                }
+                emitEvent("onEnginePageStarted", event)
             }
 
-            override fun onReceivedTitle(view: WebView?, pageTitle: String?) {
-                super.onReceivedTitle(view, pageTitle)
-                emitEvent("onEngineTitle", Arguments.createMap().apply {
-                    putString("title", pageTitle ?: "")
-                })
+            override fun onPageStop(session: GeckoSession, success: Boolean) {
+                val event = Arguments.createMap().apply {
+                    putString("url", currentUrl)
+                    putString("title", currentTitle)
+                    putBoolean("canGoBack", canGoBack)
+                    putBoolean("canGoForward", canGoForward)
+                }
+                emitEvent("onEnginePageFinished", event)
+            }
+
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                val event = Arguments.createMap().apply {
+                    putDouble("progress", progress / 100.0)
+                }
+                emitEvent("onEngineProgress", event)
             }
         }
 
-        setDownloadListener { url, userAgent, contentDisposition, mimetype, contentLength ->
-            emitEvent("onEngineDownload", Arguments.createMap().apply {
-                putString("url", url)
-                putString("userAgent", userAgent)
-                putString("contentDisposition", contentDisposition)
-                putString("mimetype", mimetype)
-                putDouble("contentLength", contentLength.toDouble())
-            })
+        // Content Delegate
+        session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onTitleChange(session: GeckoSession, title: String?) {
+                currentTitle = title ?: ""
+                val event = Arguments.createMap().apply {
+                    putString("title", currentTitle)
+                    putString("url", currentUrl)
+                }
+                emitEvent("onEngineTitle", event)
+            }
         }
     }
 
-    private fun emitEvent(eventName: String, params: com.facebook.react.bridge.WritableMap) {
+    fun loadUrl(url: String) {
+        if (url.isNotBlank() && url != currentUrl) {
+            currentUrl = url
+            session.loadUri(url)
+        }
+    }
+
+    fun goBack() {
+        session.goBack()
+    }
+
+    fun goForward() {
+        session.goForward()
+    }
+
+    fun reload() {
+        session.reload()
+    }
+
+    fun stopLoading() {
+        session.stop()
+    }
+
+    fun setDesktopMode(enabled: Boolean) {
+        session.settings.userAgentMode = if (enabled) {
+            GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+        } else {
+            GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+        }
+        session.settings.viewportMode = if (enabled) {
+            GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+        } else {
+            GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+        }
+    }
+
+    fun setTrackingProtection(enabled: Boolean) {
+        session.settings.useTrackingProtection = enabled
+    }
+
+    private fun emitEvent(eventName: String, eventData: com.facebook.react.bridge.WritableMap) {
         val reactContext = context as? ReactContext ?: return
-        reactContext.getJSModule(RCTEventEmitter::class.java).receiveEvent(id, eventName, params)
+        reactContext.getJSModule(RCTEventEmitter::class.java)?.receiveEvent(id, eventName, eventData)
+    }
+
+    fun onDestroy() {
+        session.close()
+        geckoView.releaseSession()
     }
 }
-
