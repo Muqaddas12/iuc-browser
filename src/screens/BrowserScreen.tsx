@@ -25,7 +25,6 @@ import { Tab, ShortcutItem, BrowserSettings, DetectedVideo, SearchEngine } from 
 import { COLORS, SEARCH_ENGINES, UC_USER_AGENTS } from '../constants/theme';
 import { StorageService } from '../services/StorageService';
 import { DownloadService } from '../services/NativeDownloadService';
-import { AD_BLOCK_JS } from '../services/AdBlockEngine';
 import { AD_BLOCK_JS, isAdUrl } from '../services/AdBlockEngine';
 import { MEDIA_SNIFFER_JS } from '../services/MediaSniffer';
 import { getNightModeScript } from '../services/NightModeEngine';
@@ -550,7 +549,6 @@ export const BrowserScreen: React.FC = () => {
     }
   };
 
-  // Intercept downloads and external app schemes
   // Intercept downloads, ad networks, and external app schemes
   const handleShouldStartLoadWithRequest = (request: any) => {
     const { url } = request;
@@ -695,7 +693,6 @@ export const BrowserScreen: React.FC = () => {
             }}
             source={{ uri: activeTab.initialUrl || activeTab.url }}
             style={styles.webView}
-            injectedJavaScriptBeforeContentLoaded={MEDIA_SNIFFER_JS}
             injectedJavaScriptBeforeContentLoaded={`
               ${settings.adBlockEnabled ? AD_BLOCK_JS : ''}
               ${MEDIA_SNIFFER_JS}
@@ -733,6 +730,23 @@ export const BrowserScreen: React.FC = () => {
             }}
             onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
             onNavigationStateChange={(navState) => {
+              // === Ad Redirect Detection ===
+              // If the browser navigates to an ad URL via JS redirect
+              // (location.href, location.assign, meta refresh, etc.),
+              // block it by going back immediately.
+              if (
+                settings.adBlockEnabled &&
+                navState.url &&
+                isAdUrl(navState.url) &&
+                navState.canGoBack
+              ) {
+                const ref = webViewRefs.current[activeTabId];
+                if (ref) {
+                  ref.goBack();
+                }
+                return;
+              }
+
               updateTab(activeTabId, {
                 canGoBack: navState.canGoBack,
                 canGoForward: navState.canGoForward,
@@ -761,7 +775,8 @@ export const BrowserScreen: React.FC = () => {
                 settings.saveHistory &&
                 nativeEvent.url &&
                 !nativeEvent.url.startsWith('about:') &&
-                !nativeEvent.url.startsWith('uc://')
+                !nativeEvent.url.startsWith('uc://') &&
+                !(settings.adBlockEnabled && isAdUrl(nativeEvent.url))
               ) {
                 StorageService.addHistory({
                   title: nativeEvent.title || nativeEvent.url,
