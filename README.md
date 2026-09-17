@@ -1,140 +1,190 @@
-# 🦊 UC Browser Clone (React Native + Expo Prebuild + Kotlin)
+# 🦊 IUC Browser — Quantum Gecko Edition
 
 <p align="center">
-  <img src="./assets/icon.png" width="100" height="100" alt="UC Browser Logo" style="border-radius: 20px;" />
+  <img src="./assets/icon.png" width="100" height="100" alt="IUC Browser Logo" style="border-radius: 20px;" />
 </p>
 
 <p align="center">
-  <strong>A 1:1 Pixel-Perfect & Fully Functional UC Browser Clone built with Expo Prebuild and Native Android Kotlin Modules.</strong>
+  <strong>Next-Generation, Privacy-First Android Browser Powered by Mozilla GeckoView (Firefox Quantum Engine), Multi-Tier Ad Blocking, and Native Background Download Manager.</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Expo-SDK%2052-000020?style=for-the-badge&logo=expo" alt="Expo SDK 52" />
+  <img src="https://img.shields.io/badge/Engine-Mozilla%20GeckoView%20139-FF7139?style=for-the-badge&logo=firefox" alt="GeckoView" />
   <img src="https://img.shields.io/badge/React%20Native-0.76-61DAFB?style=for-the-badge&logo=react" alt="React Native" />
+  <img src="https://img.shields.io/badge/Expo-SDK%2052-000020?style=for-the-badge&logo=expo" alt="Expo SDK 52" />
   <img src="https://img.shields.io/badge/Kotlin-Native%20Modules-7F52FF?style=for-the-badge&logo=kotlin" alt="Kotlin" />
-  <img src="https://img.shields.io/badge/Android-API%2024%2B-3DDC84?style=for-the-badge&logo=android" alt="Android" />
+  <img src="https://img.shields.io/badge/AdBlock-Multi--Tier%20Shield-E53E3E?style=for-the-badge" alt="AdBlock" />
+  <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="MIT License" />
 </p>
 
 ---
 
 ## 🚀 Overview
 
-This repository contains a full-featured, high-performance **UC Browser Clone** recreating the iconic UC browsing experience with native Kotlin acceleration, background download capabilities, ad blocking, media sniffing, and privacy features.
+**IUC Browser** is an open-source Android browser that pairs the performance of **Mozilla GeckoView (Firefox Quantum 139)** with a React Native interface and native Kotlin system integrations.
+
+Designed from the ground up for strict privacy, speed, and media usability, IUC Browser eliminates intrusive ad tracking, suppresses popunder clickjacking networks, blocks email spy pixels, and features a full-fledged OS-level background download manager.
 
 ---
 
-## 🌟 Key Features
+## 🛡️ Feature Matrix & Privacy Capabilities
 
-### 🎨 1. Iconic UC Browser UI & Design
-* **Classic 5-Button Bottom Navigation Bar**:
-  * ◀️ `Back` | ▶️ `Forward` | 🏠 `Home` | 🔲 `Live Tab Counter Badge` | ☰ `UC 3-Line Menu`.
-* **Signature Speed Dial Homepage**:
-  * Curved search omnibox with instant engine switcher (**Google, Bing, DuckDuckGo, Yahoo**).
-  * 2-row rounded shortcut icons (**Google, YouTube, Facebook, Amazon, Wikipedia, Instagram, Cricket, Twitter/X**) with status badges (`HOT`, `LIVE`) and `+ Add` button.
-  * Real-time categorized **UC News cards** (Headlines, Cricket, Tech, Cinema).
-* **Slide-Up 9/12 Grid UC Drawer Menu**:
-  * Instant toggles for **Downloads**, **Night Mode**, **AdBlocker**, **Incognito**, **Desktop Site**, **Speed Mode**, **Bookmarks/History**, **No Image Mode**, and **Settings**.
-* **3D Card Tab Switcher**:
-  * Card carousel grid with live previews, individual close triggers, "+ New Tab", "Close All", and seamless **Standard vs. Incognito Mode** toggle (with stealth purple theme).
-
----
-
-### ⚙️ 2. Native Android (Kotlin) Engine
-* **High-Speed Multi-Threaded Download Manager** (`UCDownloadManagerModule.kt`):
-  * Multi-part chunked background downloads with HTTP range resume support.
-  * Real-time download speed calculation (`KB/s`, `MB/s`) and dynamic progress broadcast.
-  * Android Notification Channel with live progress bar and direct file opening via `FileProvider`.
-* **Picture-in-Picture (PiP) Window** (`UCPiPModule.kt`):
-  * Native floating player mode for web videos.
-
----
-
-### 🛡️ 3. JavaScript Injection Engines
-* **AdBlocker Engine** (`AdBlockEngine.ts`):
-  * Real-time DOM element blocking, ad iframe neutralization, and popup suppression.
-* **HTML5 Video Stream Sniffer** (`MediaSniffer.ts`):
-  * Automatic detection of playing streaming media (`<video>`, `.mp4`, `.m3u8`, blobs).
-  * Triggers the floating orange **UC Video Assistant Pill** for 1-tap download or PiP mode.
-* **Intelligent Night Mode Engine** (`NightModeEngine.ts`):
-  * Inverts background luminance and CSS stylesheets while preserving media (photos, videos).
+| Feature | Status | Description |
+| :--- | :---: | :--- |
+| **Mozilla GeckoView Core** | ✅ Supported | Firefox Quantum engine with multi-process sandboxing & WebExtensions |
+| **Native Ad Blocker** | ✅ Supported | Multi-tier shield: native Java interceptor, GeckoView ETP, and in-DOM script rules |
+| **Popunder & Clickjack Shield** | ✅ Supported | Blocks `.cfd`, `.click`, `pt=tabup`, affiliate clickjacks, and rogue `window.open` tabs |
+| **Blocks 3rd-Party Trackers** | ✅ Supported | Total Cookie Protection + GeckoView Strict Enhanced Tracking Protection |
+| **Blocks Cookie Consent Pop-ups**| ✅ Supported | Automatic rejection and hiding of OneTrust, Cookiebot, and GDPR banners |
+| **YouTube Ad Immunity** | ✅ Supported | Automated fast-forwarding, banner removal, and silent skip for video ads |
+| **Private Search Default** | ✅ Supported | Privacy-respecting defaults: DuckDuckGo, Brave Search, Startpage |
+| **Private AI Assistant** | ✅ Supported | Built-in offline-ready conversational AI assistant for summaries and queries |
+| **Built-in Password Vault** | ✅ Supported | Master PIN-secured credentials vault with 16-character strong password generator |
+| **Blocks Email Spy Pixels** | ✅ Supported | Identifies and purges 1x1 tracking GIF beacons and stealth spy pixels |
+| **One-Tap 🔥 Session Nuke** | ✅ Supported | Instant destruction of browsing history, cookies, session cache, and active tabs |
+| **Data Broker Removal Service** | ✅ Supported | Built-in registry and 1-tap opt-out portal for data brokers and search engines |
+| **Identity Theft Restoration** | ✅ Supported | Integrated HaveIBeenPwned email breach lookup and guided response checklists |
+| **Built-in Tor / SOCKS5 Proxy** | ✅ Supported | Direct routing through Tor or custom SOCKS5 proxies with DNS-over-HTTPS (DoH) |
+| **Workspaces / Tab Groups** | ✅ Supported | Color-coded tab groups for Work, Personal, Research, and Entertainment |
+| **Split-Screen Dual Browsing** | ✅ Supported | Side-by-side simultaneous GeckoView browsing in a single view |
+| **Card Tabs with Swipe-Up** | ✅ Supported | 2-column interactive card deck with smooth upward swipe-to-close gestures |
+| **Anti-Fingerprinting Shield** | ✅ Supported | Canvas, WebGL, and AudioContext randomization; Battery API spoofing |
+| **Native Download Manager** | ✅ Supported | OS `DownloadManager` integration with background downloads and notifications |
+| **WebExtensions Support** | ✅ Supported | Built-in Firefox WebExtension runtime with manifest-based content filtering |
+| **Cross-Device Sync & Backup** | ✅ Supported | Encrypted JSON configuration export and import for seamless migration |
+| **Distraction-Free Reader Mode** | ✅ Supported | Readability extraction with Dark, Sepia, and Light themes + adjustable fonts |
+| **Live URL & Ad HUD Logger** | ✅ Supported | Real-time security event telemetry with toolbar counter badge and inspector |
 
 ---
 
-## 📁 Project Structure
+## 🏗️ Architecture
 
 ```
-├── android/                                 # Native Android Prebuild Project
-│   └── app/src/main/java/com/iuc/browser/
-│       ├── MainActivity.kt                  # Main Activity (PiP & Window flags)
-│       ├── MainApplication.kt               # Application Entry & Package Registrar
-│       ├── UCBrowserPackage.kt              # Native Module Package Registry
-│       ├── download/
-│       │   └── UCDownloadManagerModule.kt   # Multi-threaded Kotlin Download Manager
-│       └── pip/
-│           └── UCPiPModule.kt               # Native Picture-in-Picture Module
+                               ┌─────────────────────────────┐
+                               │   React Native Frontend     │
+                               │   (BrowserScreen.tsx)       │
+                               └──────────────┬──────────────┘
+                                              │
+                    ┌─────────────────────────┴─────────────────────────┐
+                    │                                                   │
+         ┌──────────▼──────────┐                             ┌──────────▼──────────┐
+         │  GeckoBrowserView   │                             │   DownloadManager   │
+         │  (React Native)     │                             │   (TypeScript)      │
+         └──────────┬──────────┘                             └──────────┬──────────┘
+                    │ React Native Bridge                               │ Bridge
+         ┌──────────▼──────────┐                             ┌──────────▼──────────┐
+         │  UCWebEngineView    │                             │ UCDownloadManager   │
+         │  (Kotlin)           │                             │ Module (Kotlin)     │
+         └──────────┬──────────┘                             └──────────┬──────────┘
+                    │                                                   │
+    ┌───────────────┼───────────────┐                        ┌──────────▼──────────┐
+    │               │               │                        │ Android OS System   │
+┌───▼────┐    ┌─────▼─────┐   ┌─────▼─────┐                  │ DownloadManager     │
+│ Gecko  │    │ AdBlocker │   │ Extension │                  │ (/storage/emulated/ │
+│ Engine │    │ (Java)    │   │ Module    │                  │  0/Download/)       │
+└────────┘    └───────────┘   └───────────┘                  └─────────────────────┘
+```
+
+1. **Mozilla GeckoView Engine (`UCWebEngineView.kt`)**:
+   - Replaces the generic WebView with Firefox's GeckoView Quantum engine (`org.mozilla.geckoview:geckoview-omni:139`).
+   - Implements native delegates: `NavigationDelegate`, `ContentBlocking.Delegate`, and `ProgressDelegate`.
+   - Isolates cross-origin storage, blocks fingerprinting scripts, and controls popups cleanly.
+
+2. **Multi-Tier Ad Blocking**:
+   - **Native Java Interceptor (`AdBlocker.java`)**: Filters 300+ known ad/tracking domains, disposable popunder TLDs (`.cfd`, `.click`, `.buzz`), and affiliate redirect patterns before requests hit the network.
+   - **GeckoView Content Blocking**: Strict Enhanced Tracking Protection (ETP) and Total Cookie Protection.
+   - **WebExtension (`android/app/src/main/assets/extensions/adblock`)**: Manifest V2 Firefox extension with background web request blocking and content scripts.
+   - **DOM JavaScript Shield (`AdBlockEngine.ts`)**: Injects CSS cosmetic filters, suppresses overlay clickjacking, neutralizes `window.open` abuse, and skips YouTube video ads.
+
+3. **Native Download Manager (`UCDownloadManagerModule.kt`)**:
+   - Utilizes the Android system `DownloadManager` service.
+   - Downloads persist in the background with lock screen progress bars and system notifications.
+   - Saves files directly to the public `Downloads` directory, making downloaded media immediately available in Android's Files and gallery apps.
+
+---
+
+## 📂 Project Structure
+
+```
+├── android/                                 # Native Android Gradle Project
+│   ├── app/src/main/
+│   │   ├── assets/extensions/adblock/       # Built-in Firefox WebExtension
+│   │   └── java/com/iuc/browser/
+│   │       ├── MainActivity.kt              # Main Activity
+│   │       ├── MainApplication.kt           # Application Entry & Package Registration
+│   │       ├── UCBrowserPackage.kt          # Native Package Registry
+│   │       ├── adblock/
+│   │       │   └── AdBlocker.java           # Native domain & regex interceptor
+│   │       ├── download/
+│   │       │   └── UCDownloadManagerModule.kt # OS DownloadManager integration
+│   │       └── web/
+│   │           ├── GeckoRuntimeManager.kt   # GeckoView Singleton Engine
+│   │           ├── UCWebEngineManager.kt    # React Native ViewManager
+│   │           └── UCWebEngineView.kt       # Native GeckoView wrapper & delegates
 ├── src/
 │   ├── components/
-│   │   ├── HeaderSearchBar.tsx              # Omnibox, Engine Picker & Progress Bar
-│   │   ├── BottomToolbar.tsx                # Classic 5-button UC Navigation Bar
-│   │   ├── SpeedDialGrid.tsx                # 2-Row rounded shortcut grid + Add Modal
-│   │   ├── NewsFeedSection.tsx              # UC Homepage News cards & tabs
-│   │   ├── UCMenuDrawer.tsx                 # 9/12 Grid Slide-Up Modal
-│   │   ├── TabSwitcherModal.tsx             # Card deck multi-tab switcher
-│   │   └── VideoAssistantBar.tsx            # Floating Video Sniffer Pill
+│   │   ├── GeckoBrowserView.tsx             # React Native bridge component
+│   │   └── SwipeableTabCard.tsx             # Interactive 2-column tab cards with swipe-up
 │   ├── screens/
-│   │   ├── BrowserScreen.tsx                # Main container integrating tabs & WebViews
-│   │   ├── DownloadManagerScreen.tsx        # Downloading & Completed manager
-│   │   ├── BookmarksHistoryScreen.tsx       # Bookmarks & History manager
-│   │   └── SettingsScreen.tsx               # Search Engine, AdBlock, & Privacy controls
+│   │   └── BrowserScreen.tsx                # Central browser UI, state, and modals
 │   ├── services/
-│   │   ├── NativeDownloadService.ts         # Bridge to Kotlin UCDownloadManager
-│   │   ├── StorageService.ts                # AsyncStorage persistence layer
-│   │   ├── AdBlockEngine.ts                 # Ad-filtering script
-│   │   ├── MediaSniffer.ts                  # Video stream detector
-│   │   └── NightModeEngine.ts               # Night mode CSS engine
-│   ├── constants/
+│   │   ├── AdBlockEngine.ts                 # In-page ad blocker & YouTube scripts
+│   │   ├── DownloadManagerService.ts        # Download service bridge & formatters
+│   │   ├── ReaderModeEngine.ts              # Readability extractor & HTML generator
+│   │   └── StorageService.ts                # AsyncStorage credentials, history, and settings
 │   └── types/
-├── App.tsx                                  # Root App entry
-└── package.json
+│       └── browser.ts                       # Core TypeScript interfaces
+├── App.tsx                                  # Root Application Entry
+├── package.json
+└── README.md
 ```
 
 ---
 
-## 📦 Getting Started
+## 🛠️ Getting Started
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18 or higher)
 - [Android Studio & Android SDK](https://developer.android.com/studio) (API 24+)
-- JDK 17 or 21
+- [JDK 17 or JDK 21](https://adoptium.net/)
+- Physical Android device (recommended) or Android Emulator (ARM64 / x86_64)
 
-### 1. Installation
+### 1. Clone & Install Dependencies
 ```bash
-git clone https://github.com/Muqaddas12/iuc-browser
+git clone https://github.com/Muqaddas12/iuc-browser.git
 cd "iuc browser"
 npm install
 ```
 
-### 2. Start the Development Server
+### 2. Verify TypeScript Types
+```bash
+npx tsc --noEmit --skipLibCheck
+```
+
+### 3. Start Expo Bundler
 ```bash
 npx expo start
 ```
 
-### 3. Run on Android Device or Emulator
-```bash
-npx expo run:android
+### 4. Build & Install Debug APK
+```powershell
+# From the android/ directory
+cd android
+.\gradlew.bat app:assembleDebug '-PreactNativeArchitectures=arm64-v8a,armeabi-v7a'
+
+# Install directly to a connected device via adb
+adb install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
-### 4. Build Debug / Release APK
-```bash
-cd android
-./gradlew assembleDebug
-# Generated APK will be at:
-# android/app/build/outputs/apk/debug/app-debug.apk
-```
+---
+
+## 📱 Supported Platforms
+
+- **Android 7.0+ (API Level 24+)**
+- Architectures: `arm64-v8a`, `armeabi-v7a`, `x86_64`
 
 ---
 
 ## 📄 License
 
-This project is open-source and available under the [MIT License](LICENSE).
-
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.

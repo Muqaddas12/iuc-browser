@@ -53,13 +53,19 @@ export const AD_BLOCK_DOMAINS = [
 export const WHITELIST_DOMAINS = [
   'google.com', 'youtube.com', 'youtu.be', 'googlevideo.com',
   'wikipedia.org', 'github.com', 'play.google.com', 'duckduckgo.com', 'brave.com',
-  'vcloud.fit', 'fastdl.icu', 'hubcloud.club', 'hubcloud.lat', 'hubcloud.one', 'hubcloud.ink',
+  'fonts.googleapis.com', 'fonts.gstatic.com', 'cdnjs.cloudflare.com', 'cloudflare.com',
+  'vcloud.fit', 'nexdrive.fit', 'fastdl.icu', 'hubcloud.club', 'hubcloud.lat', 'hubcloud.one', 'hubcloud.ink',
   'pixeldrain.com', 'mediafire.com', '1fichier.com', 'mega.nz', 'gdtot.pro', 'drivebuzz.org',
-  'ayhal.com', 'myvccs.com'
+  'ayhal.com', 'myvccs.com', 'r2.dev'
 ];
+
+const AD_TLDS = new Set(['cfd', 'click', 'buzz', 'rest', 'monster', 'sbs', 'skin', 'cam', 'top']);
 
 export function isAdUrl(url: string): boolean {
   if (!url) return false;
+  if (url.startsWith('file://') || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('javascript:')) {
+    return false;
+  }
   try {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
@@ -68,8 +74,10 @@ export function isAdUrl(url: string): boolean {
     for (let i = 0; i < WHITELIST_DOMAINS.length; i++) {
       const w = WHITELIST_DOMAINS[i];
       if (hostname === w || hostname.endsWith('.' + w)) {
-        if (url.includes('/watch') || url.includes('/embed') || hostname.includes('googlevideo') || url.includes('/search')) {
-          return false;
+        // Flag e-commerce affiliate clickjacks
+        if ((hostname.includes('flipkart') || hostname.includes('amazon')) &&
+            (url.includes('affid=') || url.includes('affExtParam') || url.includes('cmpid='))) {
+          return true;
         }
         return false;
       }
@@ -82,8 +90,20 @@ export function isAdUrl(url: string): boolean {
       }
     }
 
-    // 3. Check Regex pattern
-    if (/(adserver|adservice|adsystem|adtrack|adclick|popunder|popupad|banner\.php|ad\.js|ads\.js|\/ad\/|\/ads\/|clicktrack|redirect_ad|cathaytrash|llvpn|tag\.min\.js)/i.test(url)) {
+    // 3. Check Popunder / Spam TLDs (.cfd, .click, .buzz, etc.)
+    const parts = hostname.split('.');
+    const tld = parts[parts.length - 1];
+    if (AD_TLDS.has(tld)) {
+      return true;
+    }
+
+    // 4. Check affiliate / betting hosts
+    if (hostname.includes('affiliate') || hostname.includes('rajaaffiliates') || hostname.includes('betway') || hostname.includes('1xbet') || hostname.includes('casin')) {
+      return true;
+    }
+
+    // 5. Check Regex pattern and popunder tracking parameters
+    if (/(adserver|adservice|adsystem|adtrack|adclick|popunder|popupad|banner\.php|ad\.js|ads\.js|\/ad\/|\/ads\/|clicktrack|redirect_ad|cathaytrash|llvpn|tag\.min\.js|tabup|scontext_r|affid=|affExtParam|s2s\.req_id)/i.test(url)) {
       return true;
     }
   } catch {

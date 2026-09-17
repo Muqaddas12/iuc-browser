@@ -120,6 +120,17 @@ class UCWebEngineView(context: Context) : FrameLayout(context) {
         session.contentBlockingDelegate = object : ContentBlocking.Delegate {
             override fun onContentBlocked(session: GeckoSession, event: ContentBlocking.BlockEvent) {
                 val blockedUri = event.uri
+
+                // Suppress false-positive ad logs for legitimate web fonts, styles, and embedded player APIs
+                if (blockedUri.contains("fonts.googleapis.com") ||
+                    blockedUri.contains("fonts.gstatic.com") ||
+                    blockedUri.contains("cdnjs.cloudflare.com") ||
+                    blockedUri.contains("player.vimeo.com") ||
+                    blockedUri.contains("youtube.com/iframe_api")
+                ) {
+                    return
+                }
+
                 Log.i(TAG, "🛡️ [Gecko ContentBlocking BLOCKED] URL: $blockedUri")
                 val map = Arguments.createMap().apply {
                     putString("url", blockedUri)

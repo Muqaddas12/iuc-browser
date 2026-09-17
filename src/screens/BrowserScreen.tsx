@@ -367,7 +367,12 @@ export function BrowserScreen() {
   };
 
   const handleNewWindow = (newUrl: string) => {
-    if (!newUrl || newUrl === 'about:blank' || isAdUrl(newUrl)) return;
+    if (!newUrl || newUrl === 'about:blank') return;
+    if (isAdUrl(newUrl)) {
+      console.log('🛑 [Blocked Popunder / Ad New Window]:', newUrl);
+      handleAdBlocked({ url: newUrl, reason: 'Popunder Ad Blocked', source: 'handleNewWindow' });
+      return;
+    }
     console.log('🪟 [Opening Redirect / New Window in New Tab]:', newUrl);
     createTab(newUrl);
   };
