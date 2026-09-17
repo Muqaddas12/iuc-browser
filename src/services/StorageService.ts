@@ -156,7 +156,8 @@ const DEFAULT_SETTINGS: BrowserSettings = {
   splitScreenEnabled: false,
   verticalTabsEnabled: false,
   readerTheme: 'dark',
-  activeWorkspaceId: 'ws_personal'
+  activeWorkspaceId: 'ws_personal',
+  maxSimultaneousDownloads: 3
 };
 
 export const StorageService = {

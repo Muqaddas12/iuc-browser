@@ -29,8 +29,9 @@ Designed from the ground up for strict privacy, speed, and media usability, IUC 
 
 ## 🛡️ Feature Matrix & Privacy Capabilities
 
-| Feature | Status | Description |
-| :--- | :---: | :--- |
+| **Authentic UC Browser UI** | ✅ Supported | Classic UC Orange `#FF6E00`, curved omnibox, 2-row speed dial with badges, 16-grid drawer, 5-button toolbar |
+| **Custom Download Manager** | ✅ Supported | Total speed calculation (`⚡ Total: X MB/s`), byte-range resume, expired link renewal (`🔗 Update Link`) |
+| **Simultaneous Download Limit** | ✅ Supported | User-configurable concurrency limiter (1 to 6 simultaneous downloads) with background queueing |
 | **Mozilla GeckoView Core** | ✅ Supported | Firefox Quantum engine with multi-process sandboxing & WebExtensions |
 | **Native Ad Blocker** | ✅ Supported | Multi-tier shield: native Java interceptor, GeckoView ETP, and in-DOM script rules |
 | **Popunder & Clickjack Shield** | ✅ Supported | Blocks `.cfd`, `.click`, `pt=tabup`, affiliate clickjacks, and rogue `window.open` tabs |
@@ -49,7 +50,6 @@ Designed from the ground up for strict privacy, speed, and media usability, IUC 
 | **Split-Screen Dual Browsing** | ✅ Supported | Side-by-side simultaneous GeckoView browsing in a single view |
 | **Card Tabs with Swipe-Up** | ✅ Supported | 2-column interactive card deck with smooth upward swipe-to-close gestures |
 | **Anti-Fingerprinting Shield** | ✅ Supported | Canvas, WebGL, and AudioContext randomization; Battery API spoofing |
-| **Native Download Manager** | ✅ Supported | OS `DownloadManager` integration with background downloads and notifications |
 | **WebExtensions Support** | ✅ Supported | Built-in Firefox WebExtension runtime with manifest-based content filtering |
 | **Cross-Device Sync & Backup** | ✅ Supported | Encrypted JSON configuration export and import for seamless migration |
 | **Distraction-Free Reader Mode** | ✅ Supported | Readability extraction with Dark, Sepia, and Light themes + adjustable fonts |
@@ -78,10 +78,10 @@ Designed from the ground up for strict privacy, speed, and media usability, IUC 
          └──────────┬──────────┘                             └──────────┬──────────┘
                     │                                                   │
     ┌───────────────┼───────────────┐                        ┌──────────▼──────────┐
-    │               │               │                        │ Android OS System   │
-┌───▼────┐    ┌─────▼─────┐   ┌─────▼─────┐                  │ DownloadManager     │
-│ Gecko  │    │ AdBlocker │   │ Extension │                  │ (/storage/emulated/ │
-│ Engine │    │ (Java)    │   │ Module    │                  │  0/Download/)       │
+    │               │               │                        │ Native Multi-Thread │
+┌───▼────┐    ┌─────▼─────┐   ┌─────▼─────┐                  │ Range Resume Engine │
+│ Gecko  │    │ AdBlocker │   │ Extension │                  │ (HTTP 206 Partial,  │
+│ Engine │    │ (Java)    │   │ Module    │                  │  Queue & Speed Calc)│
 └────────┘    └───────────┘   └───────────┘                  └─────────────────────┘
 ```
 
@@ -96,10 +96,12 @@ Designed from the ground up for strict privacy, speed, and media usability, IUC 
    - **WebExtension (`android/app/src/main/assets/extensions/adblock`)**: Manifest V2 Firefox extension with background web request blocking and content scripts.
    - **DOM JavaScript Shield (`AdBlockEngine.ts`)**: Injects CSS cosmetic filters, suppresses overlay clickjacking, neutralizes `window.open` abuse, and skips YouTube video ads.
 
-3. **Native Download Manager (`UCDownloadManagerModule.kt`)**:
-   - Utilizes the Android system `DownloadManager` service.
-   - Downloads persist in the background with lock screen progress bars and system notifications.
-   - Saves files directly to the public `Downloads` directory, making downloaded media immediately available in Android's Files and gallery apps.
+3. **Custom Native Download Engine (`UCDownloadManagerModule.kt`)**:
+   - Multi-threaded Kotlin background download engine with HTTP byte-range resume (`Range: bytes={downloadedBytes}-`) via `RandomAccessFile`.
+   - **Expired Link Renewal ("Update Link" 🔗)**: Swap out expired temporary download links (e.g. 403 Forbidden or 410 Gone) for a fresh URL while resuming seamlessly from the exact byte offset without losing any downloaded megabytes.
+   - **Simultaneous Limit (1 to 6)**: Dynamic queue scheduling that honors the user's concurrency setting in browser settings.
+   - **Real-Time Speed Meter**: Per-task transfer speed and aggregate download speed (`⚡ Total: X MB/s`) emitted live to the UI.
+   - Saves files directly to the public `Downloads` directory, with options to open files or explore the folder.
 
 ---
 

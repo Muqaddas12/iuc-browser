@@ -1,17 +1,15 @@
-import { NativeModules } from 'react-native';
+import { NativeModules, NativeEventEmitter } from 'react-native';
+import { DownloadTask } from '../types/browser';
 
 const { UCDownloadManager } = NativeModules;
+const eventEmitter = UCDownloadManager ? new NativeEventEmitter(UCDownloadManager) : null;
 
-export interface DownloadItem {
-  id: number;
-  title: string;
-  uri: string;
-  mediaType: string;
-  totalBytes: number;
-  downloadedBytes: number;
-  status: 'pending' | 'running' | 'paused' | 'successful' | 'failed' | 'unknown';
-  reason: number;
-  localUri: string;
+export interface DownloadProgressPayload {
+  totalSpeed: number;
+  activeCount: number;
+  queuedCount: number;
+  simultaneousLimit: number;
+  tasks: DownloadTask[];
 }
 
 export class DownloadManagerService {
@@ -20,7 +18,7 @@ export class DownloadManagerService {
     fileName?: string,
     mimeType?: string,
     userAgent?: string
-  ): Promise<{ downloadId: number; fileName: string; status: string }> {
+  ): Promise<{ id: string; fileName: string; status: string }> {
     if (!UCDownloadManager) {
       throw new Error('Native UCDownloadManager module is not linked.');
     }
@@ -28,7 +26,59 @@ export class DownloadManagerService {
     return await UCDownloadManager.startDownload(url, safeName, mimeType || '', userAgent || '');
   }
 
-  static async getDownloads(): Promise<DownloadItem[]> {
+  static async updateDownloadUrl(taskId: string, newUrl: string): Promise<{ success: boolean; taskId: string; downloadedBytes: number }> {
+    if (!UCDownloadManager) {
+      throw new Error('Native UCDownloadManager module is not linked.');
+    }
+    return await UCDownloadManager.updateDownloadUrl(taskId, newUrl);
+  }
+
+  static async setSimultaneousLimit(limit: number): Promise<void> {
+    if (!UCDownloadManager) return;
+    try {
+      await UCDownloadManager.setSimultaneousLimit(Math.max(1, Math.min(6, limit)));
+    } catch (e) {
+      console.warn('Failed to set simultaneous limit', e);
+    }
+  }
+
+  static async getSimultaneousLimit(): Promise<number> {
+    if (!UCDownloadManager) return 3;
+    try {
+      return await UCDownloadManager.getSimultaneousLimit();
+    } catch {
+      return 3;
+    }
+  }
+
+  static async pauseDownload(taskId: string): Promise<boolean> {
+    if (!UCDownloadManager) return false;
+    try {
+      return await UCDownloadManager.pauseDownload(taskId);
+    } catch {
+      return false;
+    }
+  }
+
+  static async resumeDownload(taskId: string): Promise<boolean> {
+    if (!UCDownloadManager) return false;
+    try {
+      return await UCDownloadManager.resumeDownload(taskId);
+    } catch {
+      return false;
+    }
+  }
+
+  static async cancelDownload(taskId: string, deleteFile = true): Promise<boolean> {
+    if (!UCDownloadManager) return false;
+    try {
+      return await UCDownloadManager.cancelDownload(taskId, deleteFile);
+    } catch {
+      return false;
+    }
+  }
+
+  static async getDownloads(): Promise<DownloadTask[]> {
     if (!UCDownloadManager) return [];
     try {
       return await UCDownloadManager.getDownloads();
@@ -38,19 +88,10 @@ export class DownloadManagerService {
     }
   }
 
-  static async cancelDownload(downloadId: number): Promise<boolean> {
+  static async openDownloadedFile(taskId: string): Promise<boolean> {
     if (!UCDownloadManager) return false;
     try {
-      return await UCDownloadManager.cancelDownload(downloadId);
-    } catch {
-      return false;
-    }
-  }
-
-  static async openDownloadedFile(downloadId: number): Promise<boolean> {
-    if (!UCDownloadManager) return false;
-    try {
-      return await UCDownloadManager.openDownloadedFile(downloadId);
+      return await UCDownloadManager.openDownloadedFile(taskId);
     } catch {
       return false;
     }
@@ -63,6 +104,11 @@ export class DownloadManagerService {
     } catch {
       return false;
     }
+  }
+
+  static addProgressListener(listener: (data: DownloadProgressPayload) => void) {
+    if (!eventEmitter) return { remove: () => {} };
+    return eventEmitter.addListener('onDownloadProgress', listener);
   }
 
   static guessFileName(url: string): string {
@@ -85,6 +131,13 @@ export class DownloadManagerService {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
+  static formatSpeed(bytesPerSec: number): string {
+    if (!bytesPerSec || bytesPerSec <= 0 || isNaN(bytesPerSec)) return '0 B/s';
+    if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+    if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+
   static isDownloadableUrl(url: string): boolean {
     if (!url) return false;
     const lower = url.toLowerCase().split('?')[0];
@@ -99,4 +152,3 @@ export class DownloadManagerService {
     return extensions.some((ext) => lower.endsWith(ext));
   }
 }
-

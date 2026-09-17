@@ -101,4 +101,20 @@ export interface BrowserSettings {
   verticalTabsEnabled: boolean;
   readerTheme: 'dark' | 'sepia' | 'light';
   activeWorkspaceId: string;
+  maxSimultaneousDownloads: number; // 1 to 6 (default 3)
+}
+
+export interface DownloadTask {
+  id: string;
+  url: string;
+  fileName: string;
+  filePath?: string;
+  totalBytes: number;
+  downloadedBytes: number;
+  speed: number; // bytes/sec
+  status: 'downloading' | 'paused' | 'queued' | 'completed' | 'failed';
+  error?: string;
+  contentType?: string;
+  createdAt: number;
+  updatedAt: number;
 }
