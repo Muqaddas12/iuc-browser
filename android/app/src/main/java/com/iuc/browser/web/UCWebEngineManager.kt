@@ -15,6 +15,7 @@ class UCWebEngineManager : SimpleViewManager<UCWebEngineView>() {
         const val COMMAND_GO_FORWARD = 2
         const val COMMAND_RELOAD = 3
         const val COMMAND_STOP = 4
+        const val COMMAND_EVALUATE_JS = 5
     }
 
     override fun getName(): String = REACT_CLASS
@@ -45,12 +46,18 @@ class UCWebEngineManager : SimpleViewManager<UCWebEngineView>() {
         view.setTrackingProtection(enabled)
     }
 
+    @ReactProp(name = "injectedJavaScript")
+    fun setInjectedJavaScript(view: UCWebEngineView, script: String?) {
+        view.setInjectedJavaScript(script)
+    }
+
     override fun getCommandsMap(): MutableMap<String, Int> {
-        return MapBuilder.of(
-            "goBack", COMMAND_GO_BACK,
-            "goForward", COMMAND_GO_FORWARD,
-            "reload", COMMAND_RELOAD,
-            "stopLoading", COMMAND_STOP
+        return mutableMapOf(
+            "goBack" to COMMAND_GO_BACK,
+            "goForward" to COMMAND_GO_FORWARD,
+            "reload" to COMMAND_RELOAD,
+            "stopLoading" to COMMAND_STOP,
+            "evaluateJavascript" to COMMAND_EVALUATE_JS
         )
     }
 
@@ -60,6 +67,10 @@ class UCWebEngineManager : SimpleViewManager<UCWebEngineView>() {
             "goForward" -> root.goForward()
             "reload" -> root.reload()
             "stopLoading" -> root.stopLoading()
+            "evaluateJavascript" -> {
+                val script = args?.getString(0) ?: ""
+                root.evaluateJavascript(script)
+            }
             else -> super.receiveCommand(root, commandId, args)
         }
     }
@@ -70,6 +81,10 @@ class UCWebEngineManager : SimpleViewManager<UCWebEngineView>() {
             COMMAND_GO_FORWARD -> root.goForward()
             COMMAND_RELOAD -> root.reload()
             COMMAND_STOP -> root.stopLoading()
+            COMMAND_EVALUATE_JS -> {
+                val script = args?.getString(0) ?: ""
+                root.evaluateJavascript(script)
+            }
             else -> super.receiveCommand(root, commandId, args)
         }
     }
@@ -80,6 +95,9 @@ class UCWebEngineManager : SimpleViewManager<UCWebEngineView>() {
         map.put("onEnginePageFinished", MapBuilder.of("registrationName", "onEnginePageFinished"))
         map.put("onEngineProgress", MapBuilder.of("registrationName", "onEngineProgress"))
         map.put("onEngineTitle", MapBuilder.of("registrationName", "onEngineTitle"))
+        map.put("onAdBlocked", MapBuilder.of("registrationName", "onAdBlocked"))
+        map.put("onNewWindow", MapBuilder.of("registrationName", "onNewWindow"))
+        map.put("onDownloadRequested", MapBuilder.of("registrationName", "onDownloadRequested"))
         return map.build()
     }
 }

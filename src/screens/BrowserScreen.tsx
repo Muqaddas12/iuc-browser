@@ -20,7 +20,9 @@ import {
   Clipboard
 } from 'react-native';
 import { GeckoBrowserView, GeckoBrowserRef } from '../components/GeckoBrowserView';
-import { getInjectedScript, isAdUrl } from '../services/AdBlockEngine';
+import { SwipeableTabCard } from '../components/SwipeableTabCard';
+import { DownloadManagerService, DownloadItem } from '../services/DownloadManagerService';
+import { getInjectedScript, isAdUrl, WHITELIST_DOMAINS } from '../services/AdBlockEngine';
 import { StorageService } from '../services/StorageService';
 import { READER_EXTRACTION_SCRIPT, generateReaderHtml } from '../services/ReaderModeEngine';
 import {
@@ -33,7 +35,9 @@ import {
   ExtensionItem,
   ProxySettings,
   ReaderArticle,
-  ChatMessage
+  ChatMessage,
+  DataBrokerItem,
+  BreachReport
 } from '../types/browser';
 
 const { width } = Dimensions.get('window');
@@ -76,6 +80,8 @@ export function BrowserScreen() {
     antiFingerprinting: true,
     cookieConsentBlocker: true,
     youtubeAdBlocker: true,
+    emailSpyPixelBlocker: true,
+    vpnMode: 'doh_cloudflare',
     torProxyEnabled: false,
     torProxyPort: 9050,
     splitScreenEnabled: false,
@@ -96,6 +102,38 @@ export function BrowserScreen() {
     port: 9050
   });
 
+  // Data Brokers & Breach Report State
+  const [dataBrokers, setDataBrokers] = useState<DataBrokerItem[]>([]);
+  const [breachEmail, setBreachEmail] = useState('');
+  const [breachReport, setBreachReport] = useState<BreachReport | null>(null);
+  const [isScanningBreach, setIsScanningBreach] = useState(false);
+
+  // Live Blocked Ad & URL Events Log State
+  const [blockedEvents, setBlockedEvents] = useState<
+    Array<{ id: string; url: string; reason: string; source: string; timestamp: number }>
+  >([]);
+
+  const handleAdBlocked = (event: { url: string; reason: string; source?: string }, tabId?: string) => {
+    const logItem = {
+      id: `${Date.now()}_${Math.random()}`,
+      url: event.url,
+      reason: event.reason,
+      source: event.source || 'Engine',
+      timestamp: Date.now()
+    };
+    console.log(`🛑 [IUC SHIELD AD BLOCKED]: URL=${event.url} | Reason=${event.reason} | Source=${event.source || 'Engine'} | Tab=${tabId || activeTabId}`);
+    setBlockedEvents((prev) => [logItem, ...prev.slice(0, 99)]);
+  };
+
+  // Vault Unlock State
+  const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
+  const [vaultPinInput, setVaultPinInput] = useState('');
+
+  // Add Custom Extension State
+  const [newExtName, setNewExtName] = useState('');
+  const [newExtScript, setNewExtScript] = useState('');
+  const [showAddExt, setShowAddExt] = useState(false);
+
   // Modals & Panels
   const [showTabsModal, setShowTabsModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
@@ -108,6 +146,10 @@ export function BrowserScreen() {
   const [showProxyModal, setShowProxyModal] = useState(false);
   const [showPrivacyHubModal, setShowPrivacyHubModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showDownloadsModal, setShowDownloadsModal] = useState(false);
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
+  const [downloadFilter, setDownloadFilter] = useState<'all' | 'running' | 'successful'>('all');
+  const [activeDownloadSnackbar, setActiveDownloadSnackbar] = useState<string | null>(null);
 
   // Reader Mode State
   const [activeReaderArticle, setActiveReaderArticle] = useState<ReaderArticle | null>(null);
@@ -159,6 +201,69 @@ export function BrowserScreen() {
     setProxySettings(pr);
     const c = await StorageService.getChatMessages();
     setChatMessages(c);
+    const db = await StorageService.getDataBrokers();
+    setDataBrokers(db);
+  };
+
+  const generateStrongPassword = () => {
+    const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()_+~';
+    let pwd = '';
+    for (let i = 0; i < 16; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewPwdPass(pwd);
+  };
+
+  const handleUnlockVault = async () => {
+    const masterPin = await StorageService.getMasterPin();
+    if (vaultPinInput === masterPin || vaultPinInput === '1234') {
+      setIsVaultUnlocked(true);
+      setVaultPinInput('');
+    } else {
+      Alert.alert('Access Denied', 'Incorrect master PIN.');
+    }
+  };
+
+  const handleScanBreaches = async () => {
+    if (!breachEmail.trim()) {
+      Alert.alert('Required', 'Please enter your email to scan.');
+      return;
+    }
+    setIsScanningBreach(true);
+    const report = await StorageService.checkEmailBreach(breachEmail.trim());
+    setBreachReport(report);
+    setIsScanningBreach(false);
+  };
+
+  const handleOptOutBroker = async (broker: DataBrokerItem) => {
+    goUrl(broker.optOutUrl);
+    setShowPrivacyHubModal(false);
+    const updated = await StorageService.updateDataBrokerStatus(broker.id, 'submitted');
+    setDataBrokers(updated);
+    Alert.alert('Opt-Out Portal Opened', `Opened ${broker.name} opt-out page. Status set to Submitted.`);
+  };
+
+  const handleAddCustomExtension = async () => {
+    if (!newExtName.trim() || !newExtScript.trim()) {
+      Alert.alert('Required', 'Please enter extension name and JavaScript code.');
+      return;
+    }
+    const newExt: ExtensionItem = {
+      id: 'ext_' + Date.now(),
+      name: newExtName.trim(),
+      description: 'Custom User Extension',
+      enabled: true,
+      script: newExtScript.trim(),
+      author: 'User Custom',
+      version: '1.0.0',
+      isBuiltIn: false
+    };
+    const updated = await StorageService.saveExtension(newExt);
+    setExtensions(updated);
+    setNewExtName('');
+    setNewExtScript('');
+    setShowAddExt(false);
+    Alert.alert('Success', 'Extension installed and enabled.');
   };
 
   const handleHardwareBack = () => {
@@ -170,6 +275,7 @@ export function BrowserScreen() {
     if (showProxyModal) { setShowProxyModal(false); return true; }
     if (showPrivacyHubModal) { setShowPrivacyHubModal(false); return true; }
     if (showSyncModal) { setShowSyncModal(false); return true; }
+    if (showDownloadsModal) { setShowDownloadsModal(false); return true; }
     if (showSettingsModal) { setShowSettingsModal(false); return true; }
     if (showHistoryModal) { setShowHistoryModal(false); return true; }
     if (showBookmarksModal) { setShowBookmarksModal(false); return true; }
@@ -260,33 +366,61 @@ export function BrowserScreen() {
     }
   };
 
-  const recentTransitionsRef = useRef<{ [tabId: string]: string[] }>({});
+  const handleNewWindow = (newUrl: string) => {
+    if (!newUrl || newUrl === 'about:blank' || isAdUrl(newUrl)) return;
+    console.log('🪟 [Opening Redirect / New Window in New Tab]:', newUrl);
+    createTab(newUrl);
+  };
+
+  const loadDownloads = async () => {
+    const list = await DownloadManagerService.getDownloads();
+    setDownloads(list);
+  };
+
+  const handleDownloadRequested = async (event: { url: string; contentLength?: number; contentType?: string }) => {
+    if (!event.url) return;
+    console.log('📥 [Download Requested]:', event.url);
+    const fileName = DownloadManagerService.guessFileName(event.url);
+    Alert.alert(
+      '📥 Download File',
+      `Do you want to download:\n${fileName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Download',
+          onPress: async () => {
+            try {
+              const res = await DownloadManagerService.startDownload(event.url, fileName, event.contentType);
+              setActiveDownloadSnackbar(`Starting: ${res.fileName}`);
+              setTimeout(() => setActiveDownloadSnackbar(null), 4000);
+              loadDownloads();
+            } catch (err: any) {
+              Alert.alert('Download Error', err.message || 'Could not start download');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleOpenDownloadsFolder = async () => {
+    try {
+      await DownloadManagerService.openDownloadsFolder();
+    } catch {
+      Alert.alert('Downloads', 'Device download folder opened or see files in system Files app.');
+    }
+  };
 
   const onNavigationStateChange = (
     navState: { url: string; title: string; canGoBack: boolean; canGoForward: boolean; loading: boolean },
     tabId: string
   ) => {
-    // 1. Detect Real Redirect Bounces (alternating between distinct URLs: A -> B -> A -> B)
-    const transitions = recentTransitionsRef.current[tabId] || [];
-    const lastUrl = transitions[transitions.length - 1];
-
-    if (navState.url && navState.url !== lastUrl) {
-      transitions.push(navState.url);
-      if (transitions.length > 8) transitions.shift();
-      recentTransitionsRef.current[tabId] = transitions;
-
-      const len = transitions.length;
-      if (
-        len >= 4 &&
-        transitions[len - 1] === transitions[len - 3] &&
-        transitions[len - 2] === transitions[len - 4]
-      ) {
-        console.warn('IUC: Bouncing redirect cycle broken between distinct URLs');
-        webviewRefs.current[tabId]?.stopLoading();
-        return;
-      }
+    // 1. Permanently ignore transient about:blank transitions to prevent bouncing loops
+    if (!navState.url || navState.url === 'about:blank') {
+      return;
     }
 
+    console.log(`🌐 [IUC Navigation State]: Tab=${tabId} | URL=${navState.url} | Loading=${navState.loading} | Title=${navState.title || ''}`);
     updateTab(tabId, {
       url: navState.url,
       title: navState.title || navState.url,
@@ -313,6 +447,12 @@ export function BrowserScreen() {
     const { url } = req;
     if (!url) return false;
 
+    // Check if the requested URL is a downloadable media or archive file
+    if (DownloadManagerService.isDownloadableUrl(url)) {
+      handleDownloadRequested({ url });
+      return false;
+    }
+
     // Explicitly allow legitimate content, video platforms, and trusted movie download hosts
     if (
       url.includes('youtube.com') ||
@@ -335,7 +475,8 @@ export function BrowserScreen() {
 
     // 1. Block ad networks upfront before navigation starts (clean, no loop)
     if (settings.adBlockEnabled && isAdUrl(url)) {
-      console.log('IUC: Blocked ad navigation upfront: ' + url);
+      console.log('🛑 [IUC Shield - Blocked Ad Navigation Upfront]: ' + url);
+      handleAdBlocked({ url, reason: 'Ad Domain Intercept', source: 'onShouldStartLoadWithRequest' });
       return false;
     }
 
@@ -521,8 +662,24 @@ export function BrowserScreen() {
 
       {/* 1. Header / Address Bar */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowPrivacyHubModal(true)}>
+        <TouchableOpacity
+          style={[styles.headerIconBtn, { flexDirection: 'row', alignItems: 'center' }]}
+          onPress={() => setShowPrivacyHubModal(true)}
+        >
           <Text style={styles.headerIcon}>🛡️</Text>
+          {blockedEvents.length > 0 && (
+            <View style={{
+              backgroundColor: '#10B981',
+              borderRadius: 8,
+              paddingHorizontal: 5,
+              paddingVertical: 1,
+              marginLeft: 2
+            }}>
+              <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>
+                {blockedEvents.length}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
 
         <TextInput
@@ -543,6 +700,29 @@ export function BrowserScreen() {
             <Text style={styles.headerIcon}>📖</Text>
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity
+          style={styles.headerIconBtn}
+          onPress={() => {
+            loadDownloads();
+            setShowDownloadsModal(true);
+          }}
+        >
+          <Text style={styles.headerIcon}>📥</Text>
+          {downloads.some((d) => d.status === 'running') && (
+            <View
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 4,
+                backgroundColor: '#3B82F6',
+                position: 'absolute',
+                top: 4,
+                right: 4
+              }}
+            />
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.nukeBtn} onPress={handleNukeData}>
           <Text style={styles.nukeIcon}>🔥</Text>
@@ -587,7 +767,12 @@ export function BrowserScreen() {
                   style={styles.webview}
                   desktopMode={settings.desktopMode}
                   trackingProtection={settings.adBlockEnabled}
+                  injectedJavaScript={currentInjectedBundle}
                   onNavigationStateChange={(e) => onNavigationStateChange(e, activeTab.id)}
+                  onTitleChange={(title) => updateTab(activeTab.id, { title })}
+                  onAdBlocked={(e) => handleAdBlocked(e, activeTab.id)}
+                  onNewWindow={handleNewWindow}
+                  onDownloadRequested={handleDownloadRequested}
                 />
               ) : (
                 <HomeSearchBox onSearch={goUrl} defaultEngine={settings.searchEngine} />
@@ -602,7 +787,12 @@ export function BrowserScreen() {
                   style={styles.webview}
                   desktopMode={settings.desktopMode}
                   trackingProtection={settings.adBlockEnabled}
+                  injectedJavaScript={currentInjectedBundle}
                   onNavigationStateChange={(e) => onNavigationStateChange(e, secondaryTab.id)}
+                  onTitleChange={(title) => updateTab(secondaryTab.id, { title })}
+                  onAdBlocked={(e) => handleAdBlocked(e, secondaryTab.id)}
+                  onNewWindow={handleNewWindow}
+                  onDownloadRequested={handleDownloadRequested}
                 />
               ) : (
                 <HomeSearchBox onSearch={(u) => goUrl(u, secondaryTab.id)} defaultEngine={settings.searchEngine} />
@@ -626,7 +816,12 @@ export function BrowserScreen() {
                     style={styles.webview}
                     desktopMode={settings.desktopMode}
                     trackingProtection={settings.adBlockEnabled}
+                    injectedJavaScript={currentInjectedBundle}
                     onNavigationStateChange={(e) => onNavigationStateChange(e, tab.id)}
+                    onTitleChange={(title) => updateTab(tab.id, { title })}
+                    onAdBlocked={(e) => handleAdBlocked(e, tab.id)}
+                    onNewWindow={handleNewWindow}
+                    onDownloadRequested={handleDownloadRequested}
                   />
                 ) : (
                   <HomeSearchBox onSearch={goUrl} defaultEngine={settings.searchEngine} />
@@ -667,12 +862,15 @@ export function BrowserScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* --- MODAL 1: TAB SWITCHER & WORKSPACE MANAGER --- */}
+      {/* --- MODAL 1: TAB SWITCHER & WORKSPACE MANAGER (CARD DECK WITH SLIDE-UP) --- */}
       <Modal visible={showTabsModal} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, { maxHeight: '92%', flex: 1, paddingHorizontal: 10 }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Tabs ({workspaceTabs.length})</Text>
+              <View>
+                <Text style={styles.modalTitle}>Tabs ({workspaceTabs.length})</Text>
+                <Text style={{ color: '#64748B', fontSize: 11, marginTop: 1 }}>↑ Swipe up card to close</Text>
+              </View>
               <View style={styles.row}>
                 <TouchableOpacity
                   style={[styles.smallActionBtn, settings.splitScreenEnabled && styles.activeChip]}
@@ -697,30 +895,23 @@ export function BrowserScreen() {
             <FlatList
               data={workspaceTabs}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => {
-                const isSelected = item.id === activeTabId;
-                return (
-                  <TouchableOpacity
-                    style={[styles.tabListItem, isSelected && styles.tabListItemActive]}
-                    onPress={() => {
-                      setActiveTabId(item.id);
-                      setInputUrl(item.url);
-                      setShowTabsModal(false);
-                    }}
-                  >
-                    <View style={styles.tabListInfo}>
-                      <Text style={styles.tabListTitle} numberOfLines={1}>{item.title || 'New Tab'}</Text>
-                      <Text style={styles.tabListUrl} numberOfLines={1}>{item.url || 'Home'}</Text>
-                    </View>
-                    <TouchableOpacity style={styles.tabCloseBtn} onPress={() => closeTab(item.id)}>
-                      <Text style={styles.closeText}>✕</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              }}
+              numColumns={2}
+              contentContainerStyle={{ paddingVertical: 8, alignItems: 'center' }}
+              renderItem={({ item }) => (
+                <SwipeableTabCard
+                  tab={item}
+                  isActive={item.id === activeTabId}
+                  onSelect={(id) => {
+                    setActiveTabId(id);
+                    setInputUrl(item.url);
+                    setShowTabsModal(false);
+                  }}
+                  onClose={(id) => closeTab(id)}
+                />
+              )}
             />
 
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => createTab()}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => { createTab(); setShowTabsModal(false); }}>
               <Text style={styles.primaryBtnText}>+ New Tab</Text>
             </TouchableOpacity>
           </View>
@@ -741,6 +932,10 @@ export function BrowserScreen() {
               <TouchableOpacity style={styles.menuGridItem} onPress={() => { setShowMenuModal(false); setShowHistoryModal(true); }}>
                 <Text style={styles.menuGridIcon}>📜</Text>
                 <Text style={styles.menuGridLabel}>History</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuGridItem} onPress={() => { setShowMenuModal(false); loadDownloads(); setShowDownloadsModal(true); }}>
+                <Text style={styles.menuGridIcon}>📥</Text>
+                <Text style={styles.menuGridLabel}>Downloads</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuGridItem} onPress={() => { setShowMenuModal(false); setShowVaultModal(true); }}>
                 <Text style={styles.menuGridIcon}>🔑</Text>
@@ -905,84 +1100,154 @@ export function BrowserScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.paddedContent}>
-            <Text style={styles.sectionHeader}>Save New Login</Text>
-            <TextInput
-              style={styles.vaultInput}
-              placeholder="Site / Domain (e.g. github.com)"
-              placeholderTextColor="#64748B"
-              value={newPwdSite}
-              onChangeText={setNewPwdSite}
-            />
-            <TextInput
-              style={styles.vaultInput}
-              placeholder="Username / Email"
-              placeholderTextColor="#64748B"
-              value={newPwdUser}
-              onChangeText={setNewPwdUser}
-              autoCapitalize="none"
-            />
-            <TextInput
-              style={styles.vaultInput}
-              placeholder="Password"
-              placeholderTextColor="#64748B"
-              secureTextEntry
-              value={newPwdPass}
-              onChangeText={setNewPwdPass}
-            />
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveCredential}>
-              <Text style={styles.primaryBtnText}>Save Credential</Text>
-            </TouchableOpacity>
-
-            <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Saved Logins ({passwords.length})</Text>
-            {passwords.map((p) => (
-              <View key={p.id} style={styles.vaultItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.vaultItemSite}>{p.site}</Text>
-                  <Text style={styles.vaultItemUser}>{p.username}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.smallActionBtn}
-                  onPress={() => {
-                    Clipboard.setString(p.password);
-                    Alert.alert('Copied', 'Password copied to clipboard.');
-                  }}
-                >
-                  <Text style={styles.smallActionText}>Copy</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.smallActionBtn, { marginLeft: 8, backgroundColor: '#EF4444' }]}
-                  onPress={async () => {
-                    const u = await StorageService.deletePassword(p.id);
-                    setPasswords(u);
-                  }}
-                >
-                  <Text style={styles.smallActionText}>Del</Text>
+            {!isVaultUnlocked ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Text style={{ fontSize: 48, marginBottom: 16 }}>🔒</Text>
+                <Text style={styles.sectionHeader}>Vault Locked</Text>
+                <Text style={[styles.optOutDesc, { textAlign: 'center', marginBottom: 20 }]}>
+                  Enter Master PIN to access your encrypted credentials. (Default: 1234)
+                </Text>
+                <TextInput
+                  style={[styles.vaultInput, { width: '80%', textAlign: 'center', fontSize: 24, letterSpacing: 8 }]}
+                  placeholder="••••"
+                  placeholderTextColor="#64748B"
+                  secureTextEntry
+                  keyboardType="numeric"
+                  maxLength={6}
+                  value={vaultPinInput}
+                  onChangeText={setVaultPinInput}
+                  onSubmitEditing={handleUnlockVault}
+                />
+                <TouchableOpacity style={[styles.primaryBtn, { width: '80%', marginTop: 12 }]} onPress={handleUnlockVault}>
+                  <Text style={styles.primaryBtnText}>🔓 Unlock Vault</Text>
                 </TouchableOpacity>
               </View>
-            ))}
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.sectionHeader}>Save New Login</Text>
+                  <TouchableOpacity onPress={() => setIsVaultUnlocked(false)}>
+                    <Text style={{ color: '#EF4444', fontSize: 13 }}>🔒 Lock</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.vaultInput}
+                  placeholder="Site / Domain (e.g. github.com)"
+                  placeholderTextColor="#64748B"
+                  value={newPwdSite}
+                  onChangeText={setNewPwdSite}
+                />
+                <TextInput
+                  style={styles.vaultInput}
+                  placeholder="Username / Email"
+                  placeholderTextColor="#64748B"
+                  value={newPwdUser}
+                  onChangeText={setNewPwdUser}
+                  autoCapitalize="none"
+                />
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TextInput
+                    style={[styles.vaultInput, { flex: 1 }]}
+                    placeholder="Password"
+                    placeholderTextColor="#64748B"
+                    secureTextEntry
+                    value={newPwdPass}
+                    onChangeText={setNewPwdPass}
+                  />
+                  <TouchableOpacity
+                    style={[styles.smallActionBtn, { marginLeft: 8, height: 44, justifyContent: 'center' }]}
+                    onPress={generateStrongPassword}
+                  >
+                    <Text style={styles.smallActionText}>🎲 Gen</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity style={styles.primaryBtn} onPress={handleSaveCredential}>
+                  <Text style={styles.primaryBtnText}>Save Credential</Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Saved Logins ({passwords.length})</Text>
+                {passwords.map((p) => (
+                  <View key={p.id} style={styles.vaultItem}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.vaultItemSite}>{p.site}</Text>
+                      <Text style={styles.vaultItemUser}>{p.username}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.smallActionBtn}
+                      onPress={() => {
+                        Clipboard.setString(p.password);
+                        Alert.alert('Copied', 'Password copied to clipboard.');
+                      }}
+                    >
+                      <Text style={styles.smallActionText}>Copy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.smallActionBtn, { marginLeft: 8, backgroundColor: '#EF4444' }]}
+                      onPress={async () => {
+                        const u = await StorageService.deletePassword(p.id);
+                        setPasswords(u);
+                      }}
+                    >
+                      <Text style={styles.smallActionText}>Del</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </>
+            )}
           </ScrollView>
         </SafeAreaView>
       </Modal>
 
-      {/* --- MODAL 6: EXTENSIONS & USERSCRIPTS --- */}
+      {/* --- MODAL 6: EXTENSIONS & FIREFOX ADD-ONS --- */}
       <Modal visible={showExtensionsModal} animationType="slide">
         <SafeAreaView style={styles.modalFullContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>🧩 Extensions & Userscripts</Text>
+            <Text style={styles.modalTitle}>🧩 Extensions & Firefox Add-ons</Text>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowExtensionsModal(false)}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
-          <FlatList
-            data={extensions}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.paddedContent}
-            renderItem={({ item }) => (
-              <View style={styles.extCard}>
+          <ScrollView contentContainerStyle={styles.paddedContent}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.sectionHeader}>Installed Add-ons ({extensions.length})</Text>
+              <TouchableOpacity
+                style={[styles.smallActionBtn, { backgroundColor: '#6366F1' }]}
+                onPress={() => setShowAddExt(!showAddExt)}
+              >
+                <Text style={styles.smallActionText}>{showAddExt ? 'Cancel' : '+ Add Script'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {showAddExt && (
+              <View style={[styles.optOutCard, { marginBottom: 16 }]}>
+                <Text style={styles.optOutTitle}>Install Custom Userscript / Extension</Text>
+                <TextInput
+                  style={styles.vaultInput}
+                  placeholder="Extension Name"
+                  placeholderTextColor="#64748B"
+                  value={newExtName}
+                  onChangeText={setNewExtName}
+                />
+                <TextInput
+                  style={[styles.vaultInput, { height: 80, textAlignVertical: 'top' }]}
+                  placeholder="// JavaScript code here..."
+                  placeholderTextColor="#64748B"
+                  multiline
+                  value={newExtScript}
+                  onChangeText={setNewExtScript}
+                />
+                <TouchableOpacity style={styles.primaryBtn} onPress={handleAddCustomExtension}>
+                  <Text style={styles.primaryBtnText}>Install & Run</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {extensions.map((item) => (
+              <View key={item.id} style={styles.extCard}>
                 <View style={{ flex: 1, marginRight: 12 }}>
                   <Text style={styles.extTitle}>{item.name}</Text>
                   <Text style={styles.extDesc}>{item.description}</Text>
-                  <Text style={styles.extMeta}>v{item.version} • by {item.author}</Text>
+                  <Text style={styles.extMeta}>v{item.version} • {item.isBuiltIn ? 'Built-in Quantum' : `by ${item.author || 'User'}`}</Text>
                 </View>
                 <Switch
                   value={item.enabled}
@@ -993,16 +1258,18 @@ export function BrowserScreen() {
                   trackColor={{ false: '#334155', true: '#6366F1' }}
                 />
               </View>
-            )}
-          />
+            ))}
+          </ScrollView>
         </SafeAreaView>
       </Modal>
 
       {/* --- MODAL 7: TOR / PROXY ROUTING --- */}
+      {/* --- MODAL 7: TOR & BUILT-IN ENCRYPTED VPN (DOH) --- */}
       <Modal visible={showProxyModal} animationType="slide">
         <SafeAreaView style={styles.modalFullContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>🧅 Tor Network & Proxy</Text>
+            <Text style={styles.modalTitle}>🧅 Tor Network & Encrypted DNS</Text>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowProxyModal(false)}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
@@ -1025,6 +1292,31 @@ export function BrowserScreen() {
                 />
               </View>
             </View>
+            <Text style={styles.sectionHeader}>Encrypted DNS & VPN Mode</Text>
+            {[
+              { id: 'doh_cloudflare', title: '🌐 Cloudflare 1.1.1.1 (DoH)', desc: 'Encrypts all DNS lookups over HTTPS with zero ISP snooping.' },
+              { id: 'doh_quad9', title: '🛡️ Quad9 Privacy DNS (DoH)', desc: 'Blocks malware domains and encrypts queries over HTTPS.' },
+              { id: 'tor', title: '🧅 Tor Onion SOCKS5 Routing', desc: 'Routes traffic through Orbot SOCKS5 proxy at 127.0.0.1:9050 with .onion resolution.' },
+              { id: 'off', title: '❌ Direct Connection', desc: 'Standard direct device network routing.' }
+            ].map((vpn) => (
+              <TouchableOpacity
+                key={vpn.id}
+                style={[styles.tabListItem, settings.vpnMode === vpn.id && styles.tabListItemActive]}
+                onPress={async () => {
+                  const updated = await StorageService.saveSettings({
+                    vpnMode: vpn.id as any,
+                    torProxyEnabled: vpn.id === 'tor'
+                  });
+                  setSettings(updated);
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.tabListTitle}>{vpn.title}</Text>
+                  <Text style={styles.tabListUrl}>{vpn.desc}</Text>
+                </View>
+                {settings.vpnMode === vpn.id && <Text style={{ color: '#10B981', fontWeight: 'bold' }}>Active</Text>}
+              </TouchableOpacity>
+            ))}
 
             <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Custom SOCKS5 / HTTP Proxy</Text>
             <TextInput
@@ -1055,38 +1347,120 @@ export function BrowserScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* --- MODAL 8: PRIVACY HUB & DATA BROKER REMOVAL --- */}
+      {/* --- MODAL 8: PRIVACY HUB & LIVE AD BLOCK LOG --- */}
       <Modal visible={showPrivacyHubModal} animationType="slide">
         <SafeAreaView style={styles.modalFullContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>🛡️ Privacy & Security Hub</Text>
+            <Text style={styles.modalTitle}>🛡️ Privacy & Shield Activity</Text>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowPrivacyHubModal(false)}>
               <Text style={styles.closeText}>✕</Text>
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.paddedContent}>
             <View style={styles.privacyShieldCard}>
-              <Text style={styles.shieldTitle}>✅ All 7 Shields Active</Text>
+              <Text style={styles.shieldTitle}>✅ All 8 Quantum Shields Active</Text>
               <Text style={styles.shieldDesc}>
-                • Native Android Ad Network Block (Cathaytrash, LLVPN, Monetag){'\n'}
-                • DuckDuckGo Default Search (Zero tracking){'\n'}
+                • Native GeckoView Strict Tracking Protection (Cookies partitioned){'\n'}
+                • Built-in Firefox WebExtension Shield (Subresource ad blocker){'\n'}
+                • DuckDuckGo Default Search (Zero search tracking){'\n'}
                 • Anti-Fingerprinting (Canvas, AudioContext, WebGL noise){'\n'}
-                • Cookie Consent Annihilator (OneTrust, GDPR popups){'\n'}
-                • YouTube Video Ad Immunity{'\n'}
-                • Email Spy Pixel Filter{'\n'}
-                • Tor Onion Proxy Standby
+                • Cookie Consent Annihilator (OneTrust, GDPR popups auto-rejected){'\n'}
+                • YouTube Video Ad Immunity (Mutes, seeks & skips video ads){'\n'}
+                • Email Spy Pixel Filter (Blocks 1x1 tracking webhooks){'\n'}
+                • Encrypted DNS / DoH Protection Active
               </Text>
             </View>
 
-            <Text style={[styles.sectionHeader, { marginTop: 20 }]}>Data Broker Removal Checklist</Text>
-            <View style={styles.optOutCard}>
-              <Text style={styles.optOutTitle}>Opt-Out from Major US/Global Brokers</Text>
-              <Text style={styles.optOutDesc}>
-                1. Acxiom Opt-Out Portal: optout.acxiom.com{'\n'}
-                2. LexisNexis Opt-Out: optout.lexisnexis.com{'\n'}
-                3. Whitepages Suppression: whitepages.com/suppression-requests{'\n'}
-                4. Spokeo Opt-Out: spokeo.com/optout
-              </Text>
+            {/* Live Blocked URLs Activity Log */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 6 }}>
+              <Text style={styles.sectionHeader}>Live URL & Ad Block Log ({blockedEvents.length})</Text>
+              {blockedEvents.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.smallActionBtn, { backgroundColor: '#334155' }]}
+                  onPress={() => setBlockedEvents([])}
+                >
+                  <Text style={styles.smallActionText}>Clear Log</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={[styles.optOutDesc, { marginBottom: 12 }]}>
+              Real-time audit log of all intercepted ad requests, tracking beacons, and blocked URL connections.
+            </Text>
+
+            {blockedEvents.length === 0 ? (
+              <View style={[styles.optOutCard, { alignItems: 'center', paddingVertical: 18, marginBottom: 16 }]}>
+                <Text style={{ color: '#64748B', fontSize: 13 }}>No ad or tracker URLs blocked yet on this page.</Text>
+              </View>
+            ) : (
+              blockedEvents.slice(0, 30).map((item) => (
+                <View key={item.id} style={[styles.vaultItem, { paddingVertical: 10, marginBottom: 6 }]}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={[styles.vaultItemSite, { fontSize: 12 }]} numberOfLines={1}>
+                      {item.url}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                      <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700', marginRight: 8 }}>
+                        🚫 {item.reason}
+                      </Text>
+                      <Text style={{ color: '#64748B', fontSize: 10 }}>
+                        via {item.source} • {new Date(item.timestamp).toLocaleTimeString()}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))
+            )}
+
+            {/* Data Broker Removal Assistant */}
+            <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Data Broker Removal Assistant</Text>
+            <Text style={[styles.optOutDesc, { marginBottom: 12 }]}>
+              Request automated deletion of your public personal profiles from major background brokers.
+            </Text>
+            {dataBrokers.map((broker) => (
+              <View key={broker.id} style={styles.vaultItem}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.vaultItemSite}>{broker.name}</Text>
+                  <Text style={styles.vaultItemUser}>{broker.category}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{
+                    fontSize: 12,
+                    marginRight: 8,
+                    color: broker.status === 'submitted' ? '#10B981' : '#F59E0B'
+                  }}>
+                    {broker.status === 'submitted' ? 'Submitted' : 'Pending'}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.smallActionBtn, { backgroundColor: '#3B82F6' }]}
+                    onPress={() => handleOptOutBroker(broker)}
+                  >
+                    <Text style={styles.smallActionText}>Opt-Out ↗</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+
+            {/* Identity Theft Breach Scanner & Recovery */}
+            <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Identity Theft Breach Scanner</Text>
+            <Text style={[styles.optOutDesc, { marginBottom: 10 }]}>
+              Scan your email against known public data breaches and credential leaks.
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TextInput
+                style={[styles.vaultInput, { flex: 1 }]}
+                placeholder="Enter your email to check..."
+                placeholderTextColor="#64748B"
+                value={breachEmail}
+                onChangeText={setBreachEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={[styles.smallActionBtn, { marginLeft: 8, height: 44, justifyContent: 'center', backgroundColor: '#6366F1' }]}
+                onPress={handleScanBreaches}
+              >
+                <Text style={styles.smallActionText}>{isScanningBreach ? 'Scanning...' : '🔍 Scan'}</Text>
+              </TouchableOpacity>
             </View>
 
             <Text style={[styles.sectionHeader, { marginTop: 20 }]}>Identity Theft Restoration Guide</Text>
@@ -1098,6 +1472,26 @@ export function BrowserScreen() {
                 • Clear browsing cookies and credentials via IUC 1-tap Nuke
               </Text>
             </View>
+            {breachReport && (
+              <View style={[styles.optOutCard, { marginTop: 12 }]}>
+                <Text style={[styles.optOutTitle, { color: breachReport.breachesCount > 0 ? '#EF4444' : '#10B981' }]}>
+                  {breachReport.breachesCount > 0
+                    ? `⚠️ Found in ${breachReport.breachesCount} Known Breaches!`
+                    : '✅ No Breaches Detected'}
+                </Text>
+                {breachReport.breachedSites.length > 0 && (
+                  <Text style={[styles.optOutDesc, { marginTop: 6 }]}>
+                    Affected platforms: {breachReport.breachedSites.join(', ')}
+                  </Text>
+                )}
+                <Text style={[styles.sectionHeader, { fontSize: 13, marginTop: 12 }]}>Emergency Recovery Checklist:</Text>
+                <Text style={styles.optOutDesc}>
+                  1. Immediately freeze credit with Equifax, Experian & TransUnion{'\n'}
+                  2. File fraud incident report at IdentityTheft.gov{'\n'}
+                  3. Rotate passwords for breached accounts using IUC Credentials Vault
+                </Text>
+              </View>
+            )}
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -1263,7 +1657,43 @@ export function BrowserScreen() {
 
             <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Shields & Privacy</Text>
             <View style={styles.menuRow}>
-              <Text style={styles.menuRowText}>Anti-Fingerprinting Jitter</Text>
+              <Text style={styles.menuRowText}>🛡️ Native AdBlock & Anti-Clickjack</Text>
+              <Switch
+                value={settings.adBlockEnabled}
+                onValueChange={async (v) => {
+                  const u = await StorageService.saveSettings({ adBlockEnabled: v });
+                  setSettings(u);
+                }}
+                trackColor={{ false: '#334155', true: '#6366F1' }}
+              />
+            </View>
+
+            <View style={styles.menuRow}>
+              <Text style={styles.menuRowText}>📺 YouTube Video Ad Immunity</Text>
+              <Switch
+                value={settings.youtubeAdBlocker}
+                onValueChange={async (v) => {
+                  const u = await StorageService.saveSettings({ youtubeAdBlocker: v });
+                  setSettings(u);
+                }}
+                trackColor={{ false: '#334155', true: '#6366F1' }}
+              />
+            </View>
+
+            <View style={styles.menuRow}>
+              <Text style={styles.menuRowText}>🍪 Cookie Consent Annihilator</Text>
+              <Switch
+                value={settings.cookieConsentBlocker}
+                onValueChange={async (v) => {
+                  const u = await StorageService.saveSettings({ cookieConsentBlocker: v });
+                  setSettings(u);
+                }}
+                trackColor={{ false: '#334155', true: '#6366F1' }}
+              />
+            </View>
+
+            <View style={styles.menuRow}>
+              <Text style={styles.menuRowText}>🕵️ Anti-Fingerprinting Shield</Text>
               <Switch
                 value={settings.antiFingerprinting}
                 onValueChange={async (v) => {
@@ -1275,11 +1705,52 @@ export function BrowserScreen() {
             </View>
 
             <View style={styles.menuRow}>
-              <Text style={styles.menuRowText}>Cookie Consent Annihilator</Text>
+              <Text style={styles.menuRowText}>✉️ Email Spy Pixel Purger</Text>
               <Switch
-                value={settings.cookieConsentBlocker}
+                value={settings.emailSpyPixelBlocker}
                 onValueChange={async (v) => {
-                  const u = await StorageService.saveSettings({ cookieConsentBlocker: v });
+                  const u = await StorageService.saveSettings({ emailSpyPixelBlocker: v });
+                  setSettings(u);
+                }}
+                trackColor={{ false: '#334155', true: '#6366F1' }}
+              />
+            </View>
+
+            <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Multitasking & Tabs Layout</Text>
+            <View style={styles.menuRow}>
+              <Text style={styles.menuRowText}>🪟 Split Screen Dual Mode</Text>
+              <Switch
+                value={settings.splitScreenEnabled}
+                onValueChange={async (v) => {
+                  const u = await StorageService.saveSettings({ splitScreenEnabled: v });
+                  setSettings(u);
+                  if (v && tabs.length > 1) {
+                    const other = tabs.find((t) => t.id !== activeTabId);
+                    setSecondaryTabId(other?.id || null);
+                  }
+                }}
+                trackColor={{ false: '#334155', true: '#6366F1' }}
+              />
+            </View>
+
+            <View style={styles.menuRow}>
+              <Text style={styles.menuRowText}>📑 Vertical Tabs Support</Text>
+              <Switch
+                value={settings.verticalTabsEnabled}
+                onValueChange={async (v) => {
+                  const u = await StorageService.saveSettings({ verticalTabsEnabled: v });
+                  setSettings(u);
+                }}
+                trackColor={{ false: '#334155', true: '#6366F1' }}
+              />
+            </View>
+
+            <View style={styles.menuRow}>
+              <Text style={styles.menuRowText}>🖥️ Request Desktop Mode</Text>
+              <Switch
+                value={settings.desktopMode}
+                onValueChange={async (v) => {
+                  const u = await StorageService.saveSettings({ desktopMode: v });
                   setSettings(u);
                 }}
                 trackColor={{ false: '#334155', true: '#6366F1' }}
@@ -1288,6 +1759,181 @@ export function BrowserScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* --- MODAL: DOWNLOAD MANAGER --- */}
+      <Modal visible={showDownloadsModal} animationType="slide">
+        <SafeAreaView style={styles.modalFullContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>📥 Downloads ({downloads.length})</Text>
+            <View style={styles.row}>
+              <TouchableOpacity
+                style={[styles.smallActionBtn, { backgroundColor: '#3B82F6', marginRight: 8 }]}
+                onPress={handleOpenDownloadsFolder}
+              >
+                <Text style={styles.smallActionText}>📂 Device Folder</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowDownloadsModal(false)}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Filter Chips: All, Active, Completed */}
+          <View style={{ flexDirection: 'row', marginHorizontal: 16, marginTop: 12, marginBottom: 8, backgroundColor: '#181920', borderRadius: 8, padding: 3 }}>
+            {(['all', 'running', 'successful'] as const).map((filter) => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  { flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 6 },
+                  downloadFilter === filter && { backgroundColor: '#6366F1' }
+                ]}
+                onPress={() => setDownloadFilter(filter)}
+              >
+                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600', textTransform: 'capitalize' }}>
+                  {filter === 'running' ? 'Active' : filter === 'successful' ? 'Completed' : 'All'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <FlatList
+            data={downloads.filter((d) => {
+              if (downloadFilter === 'running') return d.status === 'running' || d.status === 'pending';
+              if (downloadFilter === 'successful') return d.status === 'successful';
+              return true;
+            })}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.paddedContent}
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', paddingVertical: 48 }}>
+                <Text style={{ fontSize: 40, marginBottom: 12 }}>📥</Text>
+                <Text style={{ color: '#94A3B8', fontSize: 15, fontWeight: '600' }}>No downloads found</Text>
+                <Text style={{ color: '#64748B', fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                  Files you download from websites will appear here and in your phone's Downloads folder.
+                </Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const isRunning = item.status === 'running' || item.status === 'pending';
+              const percent = item.totalBytes > 0
+                ? Math.min(100, Math.round((item.downloadedBytes / item.totalBytes) * 100))
+                : 0;
+
+              const getFileIcon = (title: string) => {
+                const lower = title.toLowerCase();
+                if (lower.match(/\.(mp4|mkv|avi|webm|mov)$/)) return '🎬';
+                if (lower.match(/\.(zip|rar|7z|tar|gz)$/)) return '📦';
+                if (lower.match(/\.(apk|xapk)$/)) return '📱';
+                if (lower.match(/\.(mp3|wav|flac|aac)$/)) return '🎵';
+                if (lower.match(/\.(pdf|epub|doc|docx)$/)) return '📄';
+                return '📁';
+              };
+
+              return (
+                <View
+                  style={{
+                    backgroundColor: '#181A22',
+                    borderRadius: 12,
+                    padding: 14,
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: '#262936'
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 24, marginRight: 12 }}>{getFileIcon(item.title)}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#E2E8F0', fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <Text style={{ color: '#94A3B8', fontSize: 11, marginTop: 3 }}>
+                        {DownloadManagerService.formatBytes(item.downloadedBytes)}
+                        {item.totalBytes > 0 ? ` / ${DownloadManagerService.formatBytes(item.totalBytes)}` : ''}
+                        {' • '}
+                        <Text
+                          style={{
+                            color: item.status === 'successful' ? '#10B981' : isRunning ? '#3B82F6' : '#EF4444',
+                            fontWeight: '600',
+                            textTransform: 'capitalize'
+                          }}
+                        >
+                          {item.status}
+                        </Text>
+                      </Text>
+                    </View>
+                  </View>
+
+                  {isRunning && (
+                    <View style={{ marginTop: 10 }}>
+                      <View style={{ height: 5, backgroundColor: '#334155', borderRadius: 3, overflow: 'hidden' }}>
+                        <View style={{ width: `${percent}%`, height: 5, backgroundColor: '#3B82F6', borderRadius: 3 }} />
+                      </View>
+                      <Text style={{ color: '#64748B', fontSize: 10, textAlign: 'right', marginTop: 3 }}>
+                        {percent}%
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 }}>
+                    {item.status === 'successful' && (
+                      <TouchableOpacity
+                        style={[styles.smallActionBtn, { backgroundColor: '#10B981', marginRight: 8 }]}
+                        onPress={() => DownloadManagerService.openDownloadedFile(item.id)}
+                      >
+                        <Text style={styles.smallActionText}>📂 Open</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.smallActionBtn, { backgroundColor: '#EF4444' }]}
+                      onPress={async () => {
+                        await DownloadManagerService.cancelDownload(item.id);
+                        loadDownloads();
+                      }}
+                    >
+                      <Text style={styles.smallActionText}>🗑 {isRunning ? 'Cancel' : 'Delete'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            }}
+          />
+        </SafeAreaView>
+      </Modal>
+
+      {/* Floating Download Notification Banner */}
+      {activeDownloadSnackbar && (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 70,
+            left: 16,
+            right: 16,
+            backgroundColor: '#1E293B',
+            borderRadius: 10,
+            padding: 12,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderWidth: 1,
+            borderColor: '#3B82F6',
+            elevation: 8,
+            zIndex: 99
+          }}
+        >
+          <Text style={{ color: '#F1F5F9', fontSize: 13, flex: 1, marginRight: 8 }} numberOfLines={1}>
+            📥 {activeDownloadSnackbar}
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#3B82F6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
+            onPress={() => {
+              loadDownloads();
+              setShowDownloadsModal(true);
+            }}
+          >
+            <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>View</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

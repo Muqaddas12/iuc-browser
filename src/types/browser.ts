@@ -43,9 +43,10 @@ export interface ExtensionItem {
   name: string;
   description: string;
   enabled: boolean;
-  script: string;
+  script?: string;
   author?: string;
   version?: string;
+  isBuiltIn?: boolean;
 }
 
 export interface ProxySettings {
@@ -53,6 +54,21 @@ export interface ProxySettings {
   type: 'tor' | 'socks5' | 'http';
   host: string;
   port: number;
+}
+
+export interface DataBrokerItem {
+  id: string;
+  name: string;
+  category: string;
+  optOutUrl: string;
+  status: 'pending' | 'submitted' | 'removed';
+}
+
+export interface BreachReport {
+  email: string;
+  checkedAt: number;
+  breachesCount: number;
+  breachedSites: string[];
 }
 
 export interface ReaderArticle {
@@ -77,6 +93,8 @@ export interface BrowserSettings {
   antiFingerprinting: boolean;
   cookieConsentBlocker: boolean;
   youtubeAdBlocker: boolean;
+  emailSpyPixelBlocker: boolean;
+  vpnMode: 'off' | 'doh_cloudflare' | 'doh_quad9' | 'tor';
   torProxyEnabled: boolean;
   torProxyPort: number;
   splitScreenEnabled: boolean;

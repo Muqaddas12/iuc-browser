@@ -3,6 +3,7 @@ package com.iuc.browser.adblock;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebResourceRequest;
 import android.net.Uri;
+import android.util.Log;
 import java.io.ByteArrayInputStream;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -37,7 +38,7 @@ public class AdBlocker {
 
     private static final HashSet<String> WHITELIST = new HashSet<>(Arrays.asList(
         "google.com", "youtube.com", "youtu.be", "googlevideo.com", "wikipedia.org", "github.com", "play.google.com", "duckduckgo.com", "brave.com",
-        "vcloud.fit", "fastdl.icu", "hubcloud.club", "hubcloud.lat", "hubcloud.one", "hubcloud.ink", "pixeldrain.com", "mediafire.com", "1fichier.com", "mega.nz", "gdtot.pro"
+        "vcloud.fit", "fastdl.icu", "hubcloud.club", "hubcloud.lat", "hubcloud.one", "hubcloud.ink", "pixeldrain.com", "mediafire.com", "1fichier.com", "mega.nz", "gdtot.pro", "drivebuzz.org", "ayhal.com", "myvccs.com"
     ));
 
     private static final Pattern AD_PATTERN = Pattern.compile(
@@ -66,13 +67,7 @@ public class AdBlocker {
             // Check whitelist first
             for (String whitelisted : WHITELIST) {
                 if (host.equals(whitelisted) || host.endsWith("." + whitelisted)) {
-                    // Always allow YouTube watch pages, embeds, and Google Video playback
-                    if (url.contains("/watch") || url.contains("/embed") || host.contains("googlevideo")) {
-                        return false;
-                    }
-                    if (host.equals("google.com") && url.contains("/search")) {
-                        return false;
-                    }
+                    Log.d("IUC_ADBLOCK", "⚪ [AdBlocker Whitelist Allowed] Host: " + host + " | URL: " + url);
                     return false;
                 }
             }
@@ -80,12 +75,14 @@ public class AdBlocker {
             // Check domain blocklist
             for (String domain : AD_DOMAINS) {
                 if (host.equals(domain) || host.endsWith("." + domain)) {
+                    Log.i("IUC_ADBLOCK", "🛑 [AdBlocker Native Block] Blocked Ad Domain: " + host + " (rule: " + domain + ") | Full URL: " + url);
                     return true;
                 }
             }
 
             // Check ad regex pattern
             if (AD_PATTERN.matcher(url).matches()) {
+                Log.i("IUC_ADBLOCK", "🛑 [AdBlocker Native Block] Blocked Ad Pattern Match | Full URL: " + url);
                 return true;
             }
 

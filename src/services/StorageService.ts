@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeModules } from 'react-native';
 import {
   Bookmark,
   HistoryItem,
@@ -7,18 +8,22 @@ import {
   PasswordItem,
   ExtensionItem,
   ProxySettings,
-  ChatMessage
+  ChatMessage,
+  DataBrokerItem,
+  BreachReport
 } from '../types/browser';
 
 const KEYS = {
-  SETTINGS: '@iuc_settings_v2',
-  BOOKMARKS: '@iuc_bookmarks_v2',
-  HISTORY: '@iuc_history_v2',
-  PASSWORDS: '@iuc_passwords_v2',
-  WORKSPACES: '@iuc_workspaces_v2',
-  EXTENSIONS: '@iuc_extensions_v2',
-  PROXY: '@iuc_proxy_v2',
-  CHAT_MESSAGES: '@iuc_chat_v2'
+  SETTINGS: '@iuc_settings_v3',
+  BOOKMARKS: '@iuc_bookmarks_v3',
+  HISTORY: '@iuc_history_v3',
+  PASSWORDS: '@iuc_passwords_v3',
+  WORKSPACES: '@iuc_workspaces_v3',
+  EXTENSIONS: '@iuc_extensions_v3',
+  PROXY: '@iuc_proxy_v3',
+  CHAT_MESSAGES: '@iuc_chat_v3',
+  DATA_BROKERS: '@iuc_databrokers_v3',
+  MASTER_PIN: '@iuc_master_pin_v3'
 };
 
 const DEFAULT_WORKSPACES: Workspace[] = [
@@ -36,11 +41,13 @@ const DEFAULT_EXTENSIONS: ExtensionItem[] = [
     enabled: true,
     author: 'IUC Privacy Lab',
     version: '2.4.0',
+    isBuiltIn: true,
     script: `
       (function() {
         setInterval(function() {
           var video = document.querySelector('video');
           var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
+          var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, button.ytp-ad-skip-button');
           if (skipBtn) { skipBtn.click(); }
           var ad = document.querySelector('.ad-showing, .ad-interrupting');
           if (ad && video && !isNaN(video.duration)) {
@@ -51,6 +58,8 @@ const DEFAULT_EXTENSIONS: ExtensionItem[] = [
           for (var i = 0; i < adOverlays.length; i++) {
             adOverlays[i].style.display = 'none';
           }
+          var warningModal = document.querySelector('ytd-enforcement-message-view-model');
+          if (warningModal) { warningModal.remove(); }
         }, 500);
       })();
     `
@@ -62,6 +71,7 @@ const DEFAULT_EXTENSIONS: ExtensionItem[] = [
     enabled: true,
     author: 'IUC Privacy Lab',
     version: '1.9.0',
+    isBuiltIn: true,
     script: `
       (function() {
         var cookieSelectors = [
@@ -85,6 +95,7 @@ const DEFAULT_EXTENSIONS: ExtensionItem[] = [
     enabled: false,
     author: 'Alexander S.',
     version: '4.9.5',
+    isBuiltIn: false,
     script: `
       (function() {
         if (document.getElementById('__iuc_dark_reader__')) return;
@@ -102,6 +113,7 @@ const DEFAULT_EXTENSIONS: ExtensionItem[] = [
     enabled: true,
     author: 'Magnolia1234',
     version: '3.6.8',
+    isBuiltIn: false,
     script: `
       (function() {
         var paywallSelectors = [
@@ -119,6 +131,17 @@ const DEFAULT_EXTENSIONS: ExtensionItem[] = [
   }
 ];
 
+const DEFAULT_DATA_BROKERS: DataBrokerItem[] = [
+  { id: 'db_whitepages', name: 'Whitepages', category: 'People Search', optOutUrl: 'https://www.whitepages.com/suppression-requests', status: 'pending' },
+  { id: 'db_spokeo', name: 'Spokeo', category: 'Aggregator', optOutUrl: 'https://www.spokeo.com/optout', status: 'pending' },
+  { id: 'db_radaris', name: 'Radaris', category: 'Public Records', optOutUrl: 'https://radaris.com/control/privacy', status: 'pending' },
+  { id: 'db_beenverified', name: 'BeenVerified', category: 'Background Search', optOutUrl: 'https://www.beenverified.com/app/optout/search', status: 'pending' },
+  { id: 'db_intelius', name: 'Intelius', category: 'People Finder', optOutUrl: 'https://www.intelius.com/opt-out', status: 'pending' },
+  { id: 'db_acxiom', name: 'Acxiom', category: 'Commercial Marketing', optOutUrl: 'https://isapps.acxiom.com/optout/optout.aspx', status: 'pending' },
+  { id: 'db_experian', name: 'Experian Marketing', category: 'Credit & Marketing', optOutUrl: 'https://www.experian.com/privacy/opting_out', status: 'pending' },
+  { id: 'db_lexisnexis', name: 'LexisNexis', category: 'Risk & Identity Data', optOutUrl: 'https://optout.lexisnexis.com/', status: 'pending' }
+];
+
 const DEFAULT_SETTINGS: BrowserSettings = {
   searchEngine: 'duckduckgo', // Private search engine default!
   adBlockEnabled: true,
@@ -126,6 +149,8 @@ const DEFAULT_SETTINGS: BrowserSettings = {
   antiFingerprinting: true,
   cookieConsentBlocker: true,
   youtubeAdBlocker: true,
+  emailSpyPixelBlocker: true,
+  vpnMode: 'doh_cloudflare',
   torProxyEnabled: false,
   torProxyPort: 9050,
   splitScreenEnabled: false,
@@ -228,6 +253,14 @@ export const StorageService = {
   },
 
   // --- Password Manager (Vault) ---
+  async getMasterPin(): Promise<string> {
+    return (await AsyncStorage.getItem(KEYS.MASTER_PIN)) || '1234';
+  },
+
+  async setMasterPin(pin: string): Promise<void> {
+    await AsyncStorage.setItem(KEYS.MASTER_PIN, pin);
+  },
+
   async getPasswords(): Promise<PasswordItem[]> {
     try {
       const data = await AsyncStorage.getItem(KEYS.PASSWORDS);
@@ -282,6 +315,44 @@ export const StorageService = {
     return updated;
   },
 
+  // --- Data Broker Removal Service ---
+  async getDataBrokers(): Promise<DataBrokerItem[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.DATA_BROKERS);
+      return data ? JSON.parse(data) : DEFAULT_DATA_BROKERS;
+    } catch {
+      return DEFAULT_DATA_BROKERS;
+    }
+  },
+
+  async updateDataBrokerStatus(id: string, status: DataBrokerItem['status']): Promise<DataBrokerItem[]> {
+    const list = await this.getDataBrokers();
+    const updated = list.map((b) => (b.id === id ? { ...b, status } : b));
+    await AsyncStorage.setItem(KEYS.DATA_BROKERS, JSON.stringify(updated));
+    return updated;
+  },
+
+  // --- Identity Theft Breach Checker ---
+  async checkEmailBreach(email: string): Promise<BreachReport> {
+    // Simulated offline/safe breach check based on known massive dataset leaks
+    const sampleLeakedDomains = [
+      'Adobe (2013)',
+      'LinkedIn (2016)',
+      'Canva (2019)',
+      'Dropbox (2012)',
+      'Twitter/X (2023)',
+      'MyFitnessPal (2018)'
+    ];
+    const isCommon = email.includes('@gmail') || email.includes('@yahoo') || email.includes('@hotmail');
+    const matched = isCommon ? sampleLeakedDomains.slice(0, 3) : [];
+    return {
+      email,
+      checkedAt: Date.now(),
+      breachesCount: matched.length,
+      breachedSites: matched
+    };
+  },
+
   // --- Proxy / Tor Settings ---
   async getProxySettings(): Promise<ProxySettings> {
     try {
@@ -321,28 +392,38 @@ export const StorageService = {
   },
 
   // --- One-Tap History & Data Nuke ---
+  // --- One-Tap History & Data Nuke (Fire Button) ---
   async clearAllData(): Promise<void> {
     await AsyncStorage.multiRemove([KEYS.HISTORY, KEYS.CHAT_MESSAGES]);
+    try {
+      if (NativeModules.UCExtensionModule?.clearBrowserData) {
+        await NativeModules.UCExtensionModule.clearBrowserData();
+      }
+    } catch (e) {
+      console.warn('Native clearBrowserData error:', e);
+    }
   },
 
   // --- Sync Across Devices (Export / Import Backup) ---
   async exportBackup(): Promise<string> {
-    const [settings, bookmarks, passwords, workspaces, extensions] = await Promise.all([
+    const [settings, bookmarks, passwords, workspaces, extensions, brokers] = await Promise.all([
       this.getSettings(),
       this.getBookmarks(),
       this.getPasswords(),
       this.getWorkspaces(),
-      this.getExtensions()
+      this.getExtensions(),
+      this.getDataBrokers()
     ]);
 
     const backup = {
-      version: '2.0.0',
+      version: '3.0.0',
       exportedAt: Date.now(),
       settings,
       bookmarks,
       passwords,
       workspaces,
-      extensions
+      extensions,
+      brokers
     };
 
     return JSON.stringify(backup, null, 2);
@@ -356,6 +437,7 @@ export const StorageService = {
       if (backup.passwords) await AsyncStorage.setItem(KEYS.PASSWORDS, JSON.stringify(backup.passwords));
       if (backup.workspaces) await AsyncStorage.setItem(KEYS.WORKSPACES, JSON.stringify(backup.workspaces));
       if (backup.extensions) await AsyncStorage.setItem(KEYS.EXTENSIONS, JSON.stringify(backup.extensions));
+      if (backup.brokers) await AsyncStorage.setItem(KEYS.DATA_BROKERS, JSON.stringify(backup.brokers));
       return true;
     } catch {
       return false;

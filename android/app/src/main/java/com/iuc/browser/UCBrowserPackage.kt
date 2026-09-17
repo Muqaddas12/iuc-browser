@@ -8,13 +8,15 @@ import com.facebook.react.uimanager.ReactShadowNode
 import com.facebook.react.uimanager.ViewManager
 import com.iuc.browser.download.UCDownloadManagerModule
 import com.iuc.browser.pip.UCPiPModule
+import com.iuc.browser.web.UCExtensionModule
 import com.iuc.browser.web.UCWebEngineManager
 
 class UCBrowserPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
         return listOf(
             UCDownloadManagerModule(reactContext),
-            UCPiPModule(reactContext)
+            UCPiPModule(reactContext),
+            UCExtensionModule(reactContext)
         )
     }
 

@@ -11,6 +11,7 @@ interface NativeGeckoProps {
   url?: string;
   desktopMode?: boolean;
   trackingProtection?: boolean;
+  injectedJavaScript?: string;
   style?: ViewStyle;
   onEnginePageStarted?: (event: NativeSyntheticEvent<{ url: string }>) => void;
   onEnginePageFinished?: (
@@ -23,6 +24,9 @@ interface NativeGeckoProps {
   ) => void;
   onEngineProgress?: (event: NativeSyntheticEvent<{ progress: number }>) => void;
   onEngineTitle?: (event: NativeSyntheticEvent<{ title: string; url: string }>) => void;
+  onAdBlocked?: (event: NativeSyntheticEvent<{ url: string; reason: string; source?: string }>) => void;
+  onNewWindow?: (event: NativeSyntheticEvent<{ url: string }>) => void;
+  onDownloadRequested?: (event: NativeSyntheticEvent<{ url: string; contentLength?: number; contentType?: string }>) => void;
 }
 
 const NativeUCWebEngineView = requireNativeComponent<NativeGeckoProps>('UCWebEngineView');
@@ -32,12 +36,14 @@ export interface GeckoBrowserRef {
   goForward: () => void;
   reload: () => void;
   stopLoading: () => void;
+  evaluateJavascript: (script: string) => void;
 }
 
 export interface GeckoBrowserProps {
   url: string;
   desktopMode?: boolean;
   trackingProtection?: boolean;
+  injectedJavaScript?: string;
   style?: ViewStyle;
   onNavigationStateChange?: (navState: {
     url: string;
@@ -49,6 +55,10 @@ export interface GeckoBrowserProps {
   onLoadStart?: (url: string) => void;
   onLoadEnd?: (url: string) => void;
   onProgress?: (progress: number) => void;
+  onTitleChange?: (title: string, url: string) => void;
+  onAdBlocked?: (event: { url: string; reason: string; source?: string }) => void;
+  onNewWindow?: (url: string) => void;
+  onDownloadRequested?: (event: { url: string; contentLength?: number; contentType?: string }) => void;
 }
 
 export const GeckoBrowserView = forwardRef<GeckoBrowserRef, GeckoBrowserProps>(
@@ -57,21 +67,26 @@ export const GeckoBrowserView = forwardRef<GeckoBrowserRef, GeckoBrowserProps>(
       url,
       desktopMode = false,
       trackingProtection = true,
+      injectedJavaScript,
       style,
       onNavigationStateChange,
       onLoadStart,
       onLoadEnd,
-      onProgress
+      onProgress,
+      onTitleChange,
+      onAdBlocked,
+      onNewWindow,
+      onDownloadRequested
     },
     ref
   ) => {
     const nativeRef = useRef<any>(null);
 
-    const dispatchCommand = (commandName: string, commandId: number) => {
+    const dispatchCommand = (commandName: string, commandId: number, args: any[] = []) => {
       const handle = findNodeHandle(nativeRef.current);
       if (handle) {
         if (UIManager.dispatchViewManagerCommand) {
-          UIManager.dispatchViewManagerCommand(handle, commandName, []);
+          UIManager.dispatchViewManagerCommand(handle, commandName, args);
         }
       }
     };
@@ -80,7 +95,8 @@ export const GeckoBrowserView = forwardRef<GeckoBrowserRef, GeckoBrowserProps>(
       goBack: () => dispatchCommand('goBack', 1),
       goForward: () => dispatchCommand('goForward', 2),
       reload: () => dispatchCommand('reload', 3),
-      stopLoading: () => dispatchCommand('stopLoading', 4)
+      stopLoading: () => dispatchCommand('stopLoading', 4),
+      evaluateJavascript: (script: string) => dispatchCommand('evaluateJavascript', 5, [script])
     }));
 
     return (
@@ -89,6 +105,7 @@ export const GeckoBrowserView = forwardRef<GeckoBrowserRef, GeckoBrowserProps>(
         url={url}
         desktopMode={desktopMode}
         trackingProtection={trackingProtection}
+        injectedJavaScript={injectedJavaScript}
         style={style}
         onEnginePageStarted={(e) => {
           onLoadStart?.(e.nativeEvent.url);
@@ -115,16 +132,18 @@ export const GeckoBrowserView = forwardRef<GeckoBrowserRef, GeckoBrowserProps>(
           onProgress?.(e.nativeEvent.progress);
         }}
         onEngineTitle={(e) => {
-          onNavigationStateChange?.({
-            url: e.nativeEvent.url,
-            title: e.nativeEvent.title,
-            canGoBack: false,
-            canGoForward: false,
-            loading: false
-          });
+          onTitleChange?.(e.nativeEvent.title, e.nativeEvent.url);
+        }}
+        onAdBlocked={(e) => {
+          onAdBlocked?.(e.nativeEvent);
+        }}
+        onNewWindow={(e) => {
+          onNewWindow?.(e.nativeEvent.url);
+        }}
+        onDownloadRequested={(e) => {
+          onDownloadRequested?.(e.nativeEvent);
         }}
       />
     );
   }
 );
-

@@ -54,7 +54,8 @@ export const WHITELIST_DOMAINS = [
   'google.com', 'youtube.com', 'youtu.be', 'googlevideo.com',
   'wikipedia.org', 'github.com', 'play.google.com', 'duckduckgo.com', 'brave.com',
   'vcloud.fit', 'fastdl.icu', 'hubcloud.club', 'hubcloud.lat', 'hubcloud.one', 'hubcloud.ink',
-  'pixeldrain.com', 'mediafire.com', '1fichier.com', 'mega.nz', 'gdtot.pro', 'drivebuzz.org'
+  'pixeldrain.com', 'mediafire.com', '1fichier.com', 'mega.nz', 'gdtot.pro', 'drivebuzz.org',
+  'ayhal.com', 'myvccs.com'
 ];
 
 export function isAdUrl(url: string): boolean {
@@ -99,12 +100,14 @@ export const YOUTUBE_ADBLOCK_SNIPPET = `
       // 1. Skip button auto-clicker
       var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button');
       if (skipBtn) {
+        console.log('[IUC In-Page 📺 YOUTUBE AD SKIP CLICKED] on', location.href);
         skipBtn.click();
       }
       // 2. Video ad fast-forward & mute
       var video = document.querySelector('video');
       var isAdShowing = document.querySelector('.ad-showing, .ad-interrupting');
       if (isAdShowing && video && !isNaN(video.duration)) {
+        console.log('[IUC In-Page 📺 YOUTUBE VIDEO AD MUTED & SKIPPED] on', location.href);
         video.muted = true;
         video.currentTime = video.duration;
       }
@@ -112,6 +115,11 @@ export const YOUTUBE_ADBLOCK_SNIPPET = `
       var overlays = document.querySelectorAll('.ytp-ad-overlay-container, ytd-promoted-video-renderer, ytd-banner-promo-renderer, #player-ads, .sparkles-light-cta');
       for (var i = 0; i < overlays.length; i++) {
         overlays[i].style.display = 'none';
+      }
+      var warningModal = document.querySelector('ytd-enforcement-message-view-model');
+      if (warningModal) {
+        console.log('[IUC In-Page 📺 YOUTUBE ANTI-ADBLOCK MODAL REMOVED]');
+        warningModal.remove();
       }
     }, 400);
   }
@@ -131,6 +139,7 @@ export const COOKIE_CONSENT_SNIPPET = `
       for (var i = 0; i < cookieSelectors.length; i++) {
         var el = document.querySelector(cookieSelectors[i]);
         if (el) {
+          console.log('[IUC In-Page 🍪 COOKIE CONSENT POPUP REMOVED]:', cookieSelectors[i], 'on', location.href);
           el.style.setProperty('display', 'none', 'important');
           el.remove();
         }
@@ -212,6 +221,7 @@ export const SPY_PIXEL_SNIPPET = `
         var img = images[i];
         var src = (img.getAttribute('src') || '').toLowerCase();
         if (src.indexOf('pixel') > -1 || src.indexOf('track') > -1 || src.indexOf('beacon') > -1) {
+          console.log('[IUC In-Page ✉️ SPY PIXEL PURGED]:', src, 'on', location.href);
           img.remove();
         }
       }
@@ -221,11 +231,11 @@ export const SPY_PIXEL_SNIPPET = `
   })();
 `;
 
-export function getInjectedScript(settings: BrowserSettings, extensions: ExtensionItem[] = []): string {
+export function getInjectedScript(settings: Partial<BrowserSettings>, extensions: ExtensionItem[] = []): string {
   const parts: string[] = [];
 
   // 1. Core Ad & Anti-Clickjack Protection
-  if (settings.adBlockEnabled) {
+  if (settings.adBlockEnabled !== false) {
     parts.push(`
       (function() {
         if (window.__IUC_ADBLOCK__) return;
@@ -263,6 +273,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
               var vw = window.innerWidth;
               var vh = window.innerHeight;
               if (z > 900 && w > vw * 0.6 && h > vh * 0.6 && o < 0.15) {
+                console.log('[IUC In-Page 🛡️ CLICKJACK OVERLAY REMOVED] on', location.href);
                 el.parentNode.removeChild(el);
               }
             }
@@ -272,7 +283,10 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
         // window.open neutralization
         var originalWindowOpen = window.open;
         window.open = function(url) {
-          if (isAd(url) || url === 'about:blank') return null;
+          if (isAd(url) || url === 'about:blank') {
+            console.log('[IUC In-Page 🛑 BLOCKED POPUP URL]:', url);
+            return null;
+          }
           return originalWindowOpen.apply(this, arguments);
         };
 
@@ -283,6 +297,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
             if (target.tagName && target.tagName.toLowerCase() === 'a') {
               var href = target.getAttribute('href');
               if (isAd(href)) {
+                console.log('[IUC In-Page 🛑 BLOCKED AD LINK CLICK]:', href);
                 e.preventDefault();
                 e.stopPropagation();
                 return;
@@ -301,6 +316,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
             Object.defineProperty(el, 'src', {
               set: function(val) {
                 if (isAd(val)) {
+                  console.log('[IUC In-Page 🛑 BLOCKED DYNAMIC ' + t.toUpperCase() + ']:', val);
                   this.setAttribute('data-blocked-src', val);
                 } else {
                   this.setAttribute('src', val);
@@ -318,6 +334,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
         var origFetch = window.fetch;
         window.fetch = function() {
           if (arguments[0] && typeof arguments[0] === 'string' && isAd(arguments[0])) {
+            console.log('[IUC In-Page 🛑 BLOCKED FETCH REQUEST]:', arguments[0]);
             return Promise.reject(new Error('Ad blocked'));
           }
           return origFetch.apply(this, arguments);
@@ -326,6 +343,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
         var origXHROpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url) {
           if (isAd(url)) {
+            console.log('[IUC In-Page 🛑 BLOCKED XHR REQUEST]:', url);
             this.abort();
             return;
           }
@@ -335,7 +353,10 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
         // Notification blocking
         if (window.Notification) {
           Object.defineProperty(Notification, 'requestPermission', {
-            value: function() { return Promise.resolve('denied'); },
+            value: function() {
+              console.log('[IUC In-Page 🛑 BLOCKED NOTIFICATION PERMISSION REQUEST]');
+              return Promise.resolve('denied');
+            },
             writable: false,
             configurable: false
           });
@@ -346,6 +367,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
           var origReg = navigator.serviceWorker.register;
           navigator.serviceWorker.register = function(url) {
             if (url.indexOf('push') > -1 || url.indexOf('ad') > -1 || isAd(url)) {
+              console.log('[IUC In-Page 🛑 BLOCKED SERVICE WORKER REGISTRATION]:', url);
               return Promise.reject(new Error('SW blocked'));
             }
             return origReg.apply(this, arguments);
@@ -357,7 +379,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
           var _origAssign = window.location.assign;
           window.location.assign = function(url) {
             if (typeof url === 'string' && isAd(url)) {
-              console.log('IUC Shield: Blocked ad redirect to ' + url);
+              console.log('[IUC In-Page 🛑 BLOCKED LOCATION.ASSIGN REDIRECT]:', url);
               return;
             }
             return _origAssign.call(window.location, url);
@@ -365,7 +387,7 @@ export function getInjectedScript(settings: BrowserSettings, extensions: Extensi
           var _origReplace = window.location.replace;
           window.location.replace = function(url) {
             if (typeof url === 'string' && isAd(url)) {
-              console.log('IUC Shield: Blocked ad redirect to ' + url);
+              console.log('[IUC In-Page 🛑 BLOCKED LOCATION.REPLACE REDIRECT]:', url);
               return;
             }
             return _origReplace.call(window.location, url);
@@ -421,6 +443,8 @@ export const AD_BLOCK_JS = getInjectedScript({
   antiFingerprinting: true,
   cookieConsentBlocker: true,
   youtubeAdBlocker: true,
+  emailSpyPixelBlocker: true,
+  vpnMode: 'doh_cloudflare',
   torProxyEnabled: false,
   torProxyPort: 9050,
   splitScreenEnabled: false,
